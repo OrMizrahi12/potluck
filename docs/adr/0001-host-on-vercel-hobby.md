@@ -1,0 +1,3 @@
+# Host on Vercel's Hobby plan, which forbids commercial use
+
+Potluck is a Next.js app on Vercel's free Hobby plan: it costs nothing, and every pull request gets a preview deployment. Hobby is for non-commercial use only, so while Potluck is on it there are no ads, no paid features, and no taking payments from visitors; a donation link is allowed. That constraint can't be seen in the code, so anyone adding monetization must move to a paid plan first. Exceeding a Hobby limit pauses the site until the 30-day window resets; it isn't billed. (Vercel fair-use guidelines and Hobby plan docs, checked 2026-11-11.)

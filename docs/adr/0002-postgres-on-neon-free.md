@@ -1,0 +1,3 @@
+# Store data in Postgres on Neon's free plan
+
+The database is Postgres on Neon's Free plan: 1 GB of storage and 100 compute-hours a month per project, and up to 10 branches. Free compute scales to zero after 5 idle minutes and can't be kept warm, so the first request after a quiet spell is a few hundred milliseconds slower; we accept that. Going over a limit suspends the database or blocks writes, but deletes no data. The per-group caps (members, expenses, text length) are what keep storage inside 1 GB. Neon's built-in history (about 6 hours) is the only backup for now; real backups are required before launch. (Neon plan docs, checked 2026-11-11.)
