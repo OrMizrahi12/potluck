@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE: Potluck balances</title>
+<style>
+  :root { --ink:#1d2329; --muted:#5f6b76; --line:#dde2e7; --bg:#f7f8fa; --card:#fff; --accent:#1f6f5c; --accent-soft:#e3f1ec; --bad:#b3261e; --bad-soft:#fbe9e7; --warn-soft:#fff6db; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  .banner { background:#2b2b2b; color:#ffd479; padding:6px 16px; font-size:13px; letter-spacing:.02em; }
+  header { padding:20px 24px 8px; max-width:1400px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  h3 { font-size:14px; margin:14px 0 6px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .question { max-width:900px; color:var(--muted); margin:0; }
+  nav#tabs { max-width:1400px; margin:12px auto 0; padding:0 24px; display:flex; flex-wrap:wrap; gap:6px; }
+  nav#tabs button { border:1px solid var(--line); background:var(--card); padding:5px 10px; border-radius:999px; cursor:pointer; font-size:13px; color:var(--ink); }
+  nav#tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .grid { max-width:1400px; margin:0 auto; padding:16px 24px 40px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:20px; align-items:start; }
+  @media (max-width: 900px) { .grid { grid-template-columns:1fr; padding:12px 16px 40px; } header, nav#tabs { padding-left:16px; padding-right:16px; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:8px 0 2px; }
+  input[type=text], input[type=date], select, textarea { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; width:100%; background:#fff; color:var(--ink); }
+  textarea { font-family:ui-monospace, monospace; font-size:12px; min-height:120px; }
+  .row { display:flex; gap:8px; align-items:end; flex-wrap:wrap; }
+  .row > * { flex:1; min-width:110px; }
+  button { font:inherit; font-size:13px; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.link { border:none; background:none; color:var(--accent); padding:2px 4px; text-decoration:underline; }
+  button:disabled { opacity:.45; cursor:default; }
+  .checks { display:flex; flex-wrap:wrap; gap:4px 14px; }
+  .checks label { display:flex; gap:4px; align-items:center; margin:2px 0; color:var(--ink); font-size:14px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pos { color:var(--accent); } .neg { color:var(--bad); }
+  .tag { display:inline-block; font-size:11px; padding:0 6px; border-radius:999px; background:#eef0f2; color:var(--muted); margin-left:4px; }
+  .tag.ok { background:var(--accent-soft); color:var(--accent); }
+  .tag.bad { background:var(--bad-soft); color:var(--bad); }
+  .muted { color:var(--muted); font-size:13px; }
+  .callout { border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:14px; }
+  .callout.ok { background:var(--accent-soft); }
+  .callout.bad { background:var(--bad-soft); color:var(--bad); }
+  .callout.warn { background:var(--warn-soft); }
+  .expense { border-top:1px solid var(--line); padding:8px 0; }
+  .expense:first-child { border-top:none; }
+  .shares { font-size:13px; color:var(--muted); }
+  .shares b { color:var(--ink); font-weight:600; }
+  .extra { background:var(--warn-soft); border-radius:4px; padding:0 3px; }
+  .steps { list-style:none; padding:0; margin:10px 0 0; }
+  .steps li { margin:6px 0; display:flex; gap:8px; align-items:flex-start; }
+  .steps li .n { width:22px; flex:none; color:var(--muted); font-size:13px; padding-top:5px; }
+  .steps li button { text-align:left; flex:1; }
+  .steps li.done button { background:var(--accent-soft); border-color:var(--accent-soft); }
+  .steps li.next button { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .bar { height:12px; background:var(--accent); border-radius:3px; }
+  .bar.alt { background:#c98a1b; }
+  .changed { background:var(--warn-soft); }
+  code { font-size:12px; background:#f0f2f4; padding:0 4px; border-radius:4px; }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="banner">PROTOTYPE · throwaway · not Potluck. Nothing is saved: reload and it's gone (use Export to keep a case).</div>
+<header>
+  <h1>Potluck: balances and settlements</h1>
+  <p class="question"><b>The question:</b> does the money model hold up? Equal shares with the odd-cent rotation, balances that always sum to zero, settlements of any positive amount, and suggested settlements found by greedily matching debtors to creditors. Push it through awkward cases, using the scenario tabs or free play, and look for the moment it does something you wouldn't expect.</p>
+</header>
+<nav id="tabs"></nav>
+<div class="grid">
+  <div id="left"><div id="guide"></div><div id="freeplay"></div></div>
+  <div id="right"><div id="change"></div><div id="statepanel"></div></div>
+</div>
+<script id="potluck-logic">
+/* ===== Potluck logic module (pure: no DOM). This is the liftable part. ===== */
+const Potluck = (() => {
+  'use strict';
+
+  // ---- Money ----------------------------------------------------------------
+  // Minor-unit digits come from ISO 4217, not from Intl (Intl says HUF has 0).
+  const CURRENCIES = {
+    USD: { digits: 2, label: 'USD: US dollar (2 decimals)' },
+    EUR: { digits: 2, label: 'EUR: euro (2 decimals)' },
+    JPY: { digits: 0, label: 'JPY: Japanese yen (0 decimals)' },
+    BHD: { digits: 3, label: 'BHD: Bahraini dinar (3 decimals)' },
+    KWD: { digits: 3, label: 'KWD: Kuwaiti dinar (3 decimals)' },
+    HUF: { digits: 2, label: 'HUF: Hungarian forint (ISO: 2 decimals, browsers show 0)' },
+  };
+  const LIMITS = { members: 50, expenses: 5000, maxMajorAmount: 10000000 };
+  const digitsOf = (currency) => CURRENCIES[currency].digits;
+  const maxAmount = (currency) => LIMITS.maxMajorAmount * 10 ** digitsOf(currency);
+
+  const formatters = new Map();
+  function format(minor, currency) {
+    if (!formatters.has(currency)) {
+      const d = digitsOf(currency);
+      formatters.set(currency, new Intl.NumberFormat('en-US', {
+        style: 'currency', currency, minimumFractionDigits: d, maximumFractionDigits: d,
+      }));
+    }
+    return formatters.get(currency).format(minor / 10 ** digitsOf(currency));
+  }
+
+  // Text typed by a person ("12.34") -> integer minor units. No floats on the way in.
+  function parseAmount(text, currency) {
+    const t = String(text ?? '').trim().replace(/,/g, '');
+    if (t.startsWith('-')) return { error: 'Amounts are positive only. A refund is handled by editing or deleting the original expense.' };
+    const m = /^(\d*)(?:\.(\d*))?$/.exec(t);
+    if (!m || (m[1] === '' && !m[2])) return { error: `"${text}" isn't an amount.` };
+    const d = digitsOf(currency);
+    const frac = m[2] || '';
+    if (frac.replace(/0+$/, '').length > d) {
+      return { error: d === 0 ? `${currency} has no minor units: whole amounts only.` : `${currency} has at most ${d} decimal places.` };
+    }
+    const intPart = m[1].replace(/^0+/, '') || '0';
+    if (intPart.length > 12) return { error: `That's above the cap of ${LIMITS.maxMajorAmount.toLocaleString('en-US')} ${currency}.` };
+    const fracUnits = d === 0 ? 0 : Number((frac + '0'.repeat(d)).slice(0, d));
+    return { value: Number(intPart) * 10 ** d + fracUnits };
+  }
+
+  function amountProblem(value, currency) {
+    if (!Number.isSafeInteger(value)) return 'The amount must be a whole number of minor units.';
+    if (value <= 0) return 'Amounts are positive only: no zero, no negatives. A refund is handled by editing or deleting the original expense.';
+    if (value > maxAmount(currency)) return `The cap is ${format(maxAmount(currency), currency)}.`;
+    return null;
+  }
+
+  // ---- Shares: the odd-cent rule (after Spliit) -----------------------------
+  function fnv1a(str) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+
+  const orderCache = new WeakMap();
+  function orderOf(members) {
+    let map = orderCache.get(members);
+    if (!map) { map = new Map(members.map((m) => [m.id, m.order])); orderCache.set(members, map); }
+    return map;
+  }
+
+  // Pure function of the expense: same id, amount and participants -> same shares.
+  function computeShares(expense, members) {
+    const order = orderOf(members);
+    const P = [...expense.participantIds].sort((a, b) => order.get(a) - order.get(b));
+    const n = P.length;
+    const q = Math.floor(expense.amount / n);
+    const r = expense.amount % n;
+    const offset = fnv1a(expense.id) % n;
+    const shares = P.map((memberId) => ({ memberId, share: q, extra: 0 }));
+    for (let i = 0; i < r; i++) { const s = shares[(offset + i) % n]; s.share += 1; s.extra = 1; }
+    return { n, q, r, offset, shares };
+  }
+
+  // Comparison rule only (used by the fairness experiment): leftover to the first r by creation order.
+  function computeSharesFirstK(expense, members) {
+    const order = orderOf(members);
+    const P = [...expense.participantIds].sort((a, b) => order.get(a) - order.get(b));
+    const n = P.length, q = Math.floor(expense.amount / n), r = expense.amount % n;
+    return P.map((memberId, i) => ({ memberId, share: q + (i < r ? 1 : 0), extra: i < r ? 1 : 0 }));
+  }
+
+  // ---- Balances ---------------------------------------------------------------
+  // balance = paid + settlements made - shares - settlements received
+  function ledger(state) {
+    const L = new Map(state.members.map((m) => [m.id, { paid: 0, shares: 0, made: 0, received: 0, balance: 0 }]));
+    for (const e of state.expenses) {
+      L.get(e.payerId).paid += e.amount;
+      for (const s of computeShares(e, state.members).shares) L.get(s.memberId).shares += s.share;
+    }
+    for (const st of state.settlements) {
+      L.get(st.fromId).made += st.amount;
+      L.get(st.toId).received += st.amount;
+    }
+    for (const row of L.values()) row.balance = row.paid + row.made - row.shares - row.received;
+    return L;
+  }
+
+  // ---- Suggested settlements --------------------------------------------------
+  // Greedy: repeatedly match the largest debtor with the largest creditor.
+  // Ties go to the earlier-created member, so the result is deterministic.
+  function greedyMatch(entries) {
+    const cred = entries.filter((e) => e.amount > 0).map((e) => ({ ...e }));
+    const debt = entries.filter((e) => e.amount < 0).map((e) => ({ ...e, amount: -e.amount }));
+    const byAmount = (a, b) => b.amount - a.amount || a.order - b.order;
+    const out = [];
+    while (cred.length && debt.length) {
+      cred.sort(byAmount); debt.sort(byAmount);
+      const c = cred[0], d = debt[0];
+      const x = Math.min(c.amount, d.amount);
+      out.push({ fromId: d.id, toId: c.id, amount: x });
+      c.amount -= x; d.amount -= x;
+      if (c.amount === 0) cred.shift();
+      if (d.amount === 0) debt.shift();
+    }
+    return out;
+  }
+
+  function balanceEntries(state, L = ledger(state)) {
+    return state.members
+      .map((m) => ({ id: m.id, order: m.order, amount: L.get(m.id).balance }))
+      .filter((e) => e.amount !== 0);
+  }
+
+  function suggestSettlements(state, L) {
+    return greedyMatch(balanceEntries(state, L));
+  }
+
+  // NOT the rule. Exact minimum, for comparison only. The minimum number of settlements is
+  // (members with a nonzero balance) - (most groups they can be split into that each sum to zero).
+  // Exponential in the number of nonzero balances, so it gives up above FEWEST_LIMIT.
+  const FEWEST_LIMIT = 18;
+  function fewestSettlements(entries) {
+    const k = entries.length;
+    if (k === 0) return { count: 0, plan: [] };
+    if (k > FEWEST_LIMIT) return null;
+    const N = 1 << k;
+    const sum = new Float64Array(N);
+    for (let mask = 1; mask < N; mask++) {
+      const low = mask & -mask;
+      sum[mask] = sum[mask ^ low] + entries[31 - Math.clz32(low)].amount;
+    }
+    const dp = new Uint8Array(N);
+    for (let mask = 1; mask < N; mask++) {
+      let best = 0;
+      for (let i = 0; i < k; i++) if (mask & (1 << i)) { const v = dp[mask ^ (1 << i)]; if (v > best) best = v; }
+      dp[mask] = best + (sum[mask] === 0 ? 1 : 0);
+    }
+    // Rebuild one maximal split into zero-sum groups, then settle each group greedily.
+    let mask = N - 1;
+    const removed = [];
+    while (mask) {
+      const z = sum[mask] === 0 ? 1 : 0;
+      for (let i = 0; i < k; i++) {
+        if ((mask & (1 << i)) && dp[mask ^ (1 << i)] + z === dp[mask]) { removed.push(i); mask ^= 1 << i; break; }
+      }
+    }
+    const groups = [];
+    let cur = [], running = 0;
+    for (const i of removed.reverse()) {
+      cur.push(entries[i]); running += entries[i].amount;
+      if (running === 0) { groups.push(cur); cur = []; }
+    }
+    const plan = groups.flatMap((g) => greedyMatch(g));
+    return { count: k - dp[N - 1], plan, groups: groups.map((g) => g.map((e) => e.id)) };
+  }
+
+  // ---- State and actions -------------------------------------------------------
+  function emptyGroup(currency = 'USD') {
+    return {
+      currency,
+      members: [],
+      expenses: [],
+      settlements: [],
+      seq: { member: 1, expense: 1, settlement: 1 },
+      options: { allowSelfSettlement: false },
+    };
+  }
+
+  const memberById = (s, id) => s.members.find((m) => m.id === id);
+  const nameOf = (s, id) => memberById(s, id)?.name ?? `(unknown ${id})`;
+  const nextExpenseId = (s) => `exp-${s.seq.expense}`;
+
+  function memberReferences(s, id) {
+    return {
+      paid: s.expenses.filter((e) => e.payerId === id).length,
+      participates: s.expenses.filter((e) => e.participantIds.includes(id)).length,
+      settlements: s.settlements.filter((t) => t.fromId === id || t.toId === id).length,
+    };
+  }
+
+  function expenseProblem(s, e) {
+    const p = amountProblem(e.amount, s.currency);
+    if (p) return p;
+    if (!memberById(s, e.payerId)) return 'An expense needs exactly one payer.';
+    const ids = e.participantIds || [];
+    if (new Set(ids).size !== ids.length) return 'A member can only be a participant once.';
+    if (ids.some((id) => !memberById(s, id))) return 'Every participant must be a member of the group.';
+    if (ids.length === 0) return 'An expense needs participants.';
+    if (!ids.some((id) => id !== e.payerId)) {
+      return `An expense needs at least one participant other than its payer. Here ${nameOf(s, e.payerId)} would be paying only for themselves.`;
+    }
+    return null;
+  }
+
+  function settlementProblem(s, t) {
+    const p = amountProblem(t.amount, s.currency);
+    if (p) return p;
+    if (!memberById(s, t.fromId) || !memberById(s, t.toId)) return 'A settlement is between two members of the group.';
+    if (t.fromId === t.toId && !s.options.allowSelfSettlement) {
+      return `${nameOf(s, t.fromId)} can't record a settlement with themselves. (Undecided rule: the prototype refuses unless you tick "allow" under Group.)`;
+    }
+    return null;
+  }
+
+  const cleanExpense = (e) => ({
+    id: e.id, description: String(e.description ?? '').trim(), amount: e.amount, date: e.date || '',
+    payerId: e.payerId, participantIds: [...(e.participantIds || [])],
+  });
+  const cleanSettlement = (t) => ({ id: t.id, fromId: t.fromId, toId: t.toId, amount: t.amount, date: t.date || '' });
+
+  // (state, action) -> { state, error }. A refused action leaves state unchanged.
+  function reduce(s, a) {
+    const refuse = (error) => ({ state: s, error });
+    const ok = (state) => ({ state, error: null });
+    switch (a.type) {
+      case 'setCurrency':
+        if (!CURRENCIES[a.currency]) return refuse(`Unknown currency ${a.currency}.`);
+        if (a.currency === s.currency) return ok(s);
+        if (s.expenses.length || s.settlements.length) {
+          return refuse(`The currency can't change once the group has expenses or settlements: every stored amount is in ${s.currency} minor units. (Not specified. The prototype refuses.)`);
+        }
+        return ok({ ...s, currency: a.currency });
+      case 'setOption':
+        return ok({ ...s, options: { ...s.options, [a.key]: a.value } });
+
+      case 'addMember': {
+        const name = String(a.name ?? '').trim();
+        if (!name) return refuse('A member needs a name.');
+        if (s.members.length >= LIMITS.members) return refuse(`A group has at most ${LIMITS.members} members.`);
+        const n = s.seq.member;
+        return ok({ ...s, seq: { ...s.seq, member: n + 1 }, members: [...s.members, { id: `mem-${n}`, name, order: n, active: true }] });
+      }
+      case 'renameMember': {
+        const name = String(a.name ?? '').trim();
+        if (!name) return refuse('A member needs a name.');
+        if (!memberById(s, a.id)) return refuse('No such member.');
+        return ok({ ...s, members: s.members.map((m) => (m.id === a.id ? { ...m, name } : m)) });
+      }
+      case 'setMemberActive':
+        if (!memberById(s, a.id)) return refuse('No such member.');
+        return ok({ ...s, members: s.members.map((m) => (m.id === a.id ? { ...m, active: !!a.active } : m)) });
+      case 'deleteMember': {
+        const m = memberById(s, a.id);
+        if (!m) return refuse('No such member.');
+        const r = memberReferences(s, a.id);
+        if (r.paid || r.participates || r.settlements) {
+          const why = [r.paid && `payer of ${r.paid} expense(s)`, r.participates && `participant in ${r.participates} expense(s)`, r.settlements && `in ${r.settlements} settlement(s)`].filter(Boolean).join(', ');
+          return refuse(`${m.name} can't be deleted because they're referenced (${why}). They can only be made inactive.`);
+        }
+        return ok({ ...s, members: s.members.filter((x) => x.id !== a.id) });
+      }
+
+      case 'addExpense': {
+        if (s.expenses.length >= LIMITS.expenses) return refuse(`A group has at most ${LIMITS.expenses.toLocaleString('en-US')} expenses.`);
+        const e = cleanExpense({ ...a.expense, id: nextExpenseId(s) });
+        const p = expenseProblem(s, e);
+        if (p) return refuse(p);
+        return ok({ ...s, seq: { ...s.seq, expense: s.seq.expense + 1 }, expenses: [...s.expenses, e] });
+      }
+      case 'editExpense': {
+        const old = s.expenses.find((e) => e.id === a.id);
+        if (!old) return refuse('No such expense.');
+        const e = cleanExpense({ ...old, ...a.changes, id: old.id });
+        const p = expenseProblem(s, e);
+        if (p) return refuse(p);
+        return ok({ ...s, expenses: s.expenses.map((x) => (x.id === a.id ? e : x)) });
+      }
+      case 'deleteExpense':
+        if (!s.expenses.some((e) => e.id === a.id)) return refuse('No such expense.');
+        return ok({ ...s, expenses: s.expenses.filter((e) => e.id !== a.id) });
+
+      case 'addSettlement': {
+        const t = cleanSettlement({ ...a.settlement, id: `set-${s.seq.settlement}` });
+        const p = settlementProblem(s, t);
+        if (p) return refuse(p);
+        return ok({ ...s, seq: { ...s.seq, settlement: s.seq.settlement + 1 }, settlements: [...s.settlements, t] });
+      }
+      case 'editSettlement': {
+        const old = s.settlements.find((t) => t.id === a.id);
+        if (!old) return refuse('No such settlement.');
+        const t = cleanSettlement({ ...old, ...a.changes, id: old.id });
+        const p = settlementProblem(s, t);
+        if (p) return refuse(p);
+        return ok({ ...s, settlements: s.settlements.map((x) => (x.id === a.id ? t : x)) });
+      }
+      case 'deleteSettlement':
+        if (!s.settlements.some((t) => t.id === a.id)) return refuse('No such settlement.');
+        return ok({ ...s, settlements: s.settlements.filter((t) => t.id !== a.id) });
+
+      case 'load': {
+        const x = a.state;
+        if (!x || !CURRENCIES[x.currency] || !Array.isArray(x.members) || !Array.isArray(x.expenses) || !Array.isArray(x.settlements)) {
+          return refuse('That JSON isn\'t a Potluck group.');
+        }
+        const st = { ...emptyGroup(x.currency), ...x, options: { ...emptyGroup().options, ...(x.options || {}) } };
+        for (const e of st.expenses) { const p = expenseProblem(st, e); if (p) return refuse(`Expense ${e.id}: ${p}`); }
+        for (const t of st.settlements) { const p = settlementProblem(st, t); if (p) return refuse(`Settlement ${t.id}: ${p}`); }
+        return ok(st);
+      }
+      default:
+        return refuse(`Unknown action ${a.type}.`);
+    }
+  }
+
+  // Checked after every action.
+  function checkInvariants(s, L = ledger(s)) {
+    const problems = [];
+    let total = 0;
+    for (const row of L.values()) total += row.balance;
+    if (total !== 0) problems.push(`Balances sum to ${total} minor units, not 0.`);
+    for (const e of s.expenses) {
+      const sum = computeShares(e, s.members).shares.reduce((a, x) => a + x.share, 0);
+      if (sum !== e.amount) problems.push(`Shares of ${e.id} sum to ${sum}, not ${e.amount}.`);
+    }
+    return problems;
+  }
+
+  // ---- Simulations (for the experiments) ------------------------------------------
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const pick = (r, arr) => arr[Math.floor(r() * arr.length)];
+
+  function randomExpense(r, members, i, amount, allShare) {
+    const ids = members.map((m) => m.id);
+    const payerId = pick(r, ids);
+    let participantIds;
+    if (r() < allShare) participantIds = ids.slice();
+    else {
+      participantIds = ids.filter(() => r() < 0.5);
+      if (!participantIds.some((id) => id !== payerId)) participantIds.push(pick(r, ids.filter((id) => id !== payerId)));
+    }
+    return { id: `exp-${i}`, description: `Random ${i}`, amount, date: '2026-11-01', payerId, participantIds };
+  }
+
+  // styles: 'cents' = any amount like 37.81; 'round' = whole tens like 40.00, 120.00
+  function randomGroup(r, n, style, currency = 'USD') {
+    const s = emptyGroup(currency);
+    s.members = Array.from({ length: n }, (_, i) => ({ id: `mem-${i + 1}`, name: `M${i + 1}`, order: i + 1, active: true }));
+    const count = 8 + Math.floor(r() * 30);
+    for (let i = 1; i <= count; i++) {
+      const amount = style === 'round' ? (1 + Math.floor(r() * 20)) * 1000 : 100 + Math.floor(r() * 19900);
+      s.expenses.push(randomExpense(r, s.members, i, amount, 0.6));
+    }
+    s.seq = { member: n + 1, expense: count + 1, settlement: 1 };
+    return s;
+  }
+
+  function greedyVsFewest({ sizes = [4, 5, 6, 7, 8, 9, 10], trials = 2000, style = 'cents', seed = 1 } = {}) {
+    const r = rng(seed);
+    return sizes.map((n) => {
+      const row = { members: n, trials, worse: 0, maxExtra: 0, extraTotal: 0, greedyTotal: 0, fewestTotal: 0, example: null };
+      for (let t = 0; t < trials; t++) {
+        const s = randomGroup(r, n, style);
+        const entries = balanceEntries(s);
+        const g = greedyMatch(entries).length;
+        const f = fewestSettlements(entries).count;
+        row.greedyTotal += g; row.fewestTotal += f;
+        if (g > f) {
+          row.worse++; row.extraTotal += g - f;
+          if (g - f > row.maxExtra) { row.maxExtra = g - f; row.example = s; }
+        }
+      }
+      return row;
+    });
+  }
+
+  function fairness({ memberCount = 5, expenseCount = 1000, seed = 7, allShare = 0.5 } = {}) {
+    const r = rng(seed);
+    const s = emptyGroup('USD');
+    s.members = Array.from({ length: memberCount }, (_, i) => ({ id: `mem-${i + 1}`, name: ['Ana', 'Ben', 'Cai', 'Dee', 'Eli', 'Fay', 'Gus', 'Hal'][i] || `M${i + 1}`, order: i + 1, active: true }));
+    for (let i = 1; i <= expenseCount; i++) {
+      s.expenses.push(randomExpense(r, s.members, i, 100 + Math.floor(r() * 1900), allShare));
+    }
+    s.seq = { member: memberCount + 1, expense: expenseCount + 1, settlement: 1 };
+    const rows = new Map(s.members.map((m) => [m.id, { id: m.id, name: m.name, rotation: 0, firstK: 0, leftoverChances: 0 }]));
+    for (const e of s.expenses) {
+      const sh = computeShares(e, s.members);
+      if (sh.r > 0) for (const x of sh.shares) rows.get(x.memberId).leftoverChances++;
+      for (const x of sh.shares) rows.get(x.memberId).rotation += x.extra;
+      for (const x of computeSharesFirstK(e, s.members)) rows.get(x.memberId).firstK += x.extra;
+    }
+    return { state: s, rows: [...rows.values()] };
+  }
+
+  return {
+    CURRENCIES, LIMITS, digitsOf, maxAmount, format, parseAmount, fnv1a,
+    computeShares, computeSharesFirstK, ledger, suggestSettlements, greedyMatch, balanceEntries,
+    fewestSettlements, FEWEST_LIMIT, emptyGroup, reduce, checkInvariants, memberReferences,
+    nameOf, nextExpenseId, sim: { rng, randomGroup, greedyVsFewest, fairness },
+  };
+})();
+</script>
+<script id="page">
+/* ===== Page shell (throwaway). Calls into Potluck; nothing flows the other way. ===== */
+(() => {
+  const P = Potluck;
+  const TODAY = '2026-11-11';
+  const $ = (sel) => document.querySelector(sel);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let group = P.emptyGroup('USD');
+  let change = { kind: 'ok', html: 'Empty group. Add members on the left, or pick a scenario tab above.' };
+  let tab = 'free';
+  let stepIndex = 0;
+  let timingMs = 0;
+  let exDraft = freshExpenseDraft();
+  let stDraft = freshSettlementDraft();
+  const experiments = { greedy: null, fairness: null };
+
+  function freshExpenseDraft() { return { editingId: null, description: '', amountText: '', date: TODAY, payerId: '', participantIds: null }; }
+  function freshSettlementDraft() { return { editingId: null, fromId: '', toId: '', amountText: '', date: TODAY }; }
+
+  const name = (g, id) => esc(P.nameOf(g, id));
+  const money = (v, g = group) => esc(P.format(v, g.currency));
+  const signed = (v, g = group) => `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${v > 0 ? '+' : ''}${money(v, g)}</span>`;
+
+  // ---------- dispatch + "what changed" ----------
+  function dispatch(action, label) {
+    if (!action) { change = { kind: 'warn', html: 'Nothing to do here: there is no suggested settlement left. Everyone is settled up.' }; render(); return false; }
+    if (action.error) { change = { kind: 'bad', html: `<b>Refused:</b> ${esc(action.error)}` }; render(); return false; }
+    const before = group;
+    const t0 = performance.now();
+    const res = P.reduce(group, action);
+    if (res.error) { change = { kind: 'bad', html: `<b>Refused:</b> ${esc(res.error)}` }; render(); return false; }
+    group = res.state;
+    P.suggestSettlements(group, P.ledger(group));
+    timingMs = performance.now() - t0;
+    change = describeChange(before, group, action, label);
+    render();
+    return true;
+  }
+
+  function describeAction(g, a) {
+    switch (a.type) {
+      case 'addMember': return `Added member ${esc(a.name)}.`;
+      case 'renameMember': return `Renamed ${name(g, a.id)} to ${esc(a.name)}.`;
+      case 'setMemberActive': return `${name(g, a.id)} is now ${a.active ? 'active' : 'inactive'}.`;
+      case 'deleteMember': return `Deleted member ${name(g, a.id)}.`;
+      case 'addExpense': return `Added expense “${esc(a.expense.description || '(no description)')}”: ${money(a.expense.amount, g)} paid by ${name(g, a.expense.payerId)}.`;
+      case 'editExpense': return `Edited expense ${esc(a.id)}.`;
+      case 'deleteExpense': return `Deleted expense ${esc(a.id)} (hard delete, no undo).`;
+      case 'addSettlement': return `Recorded a settlement: ${name(g, a.settlement.fromId)} paid ${name(g, a.settlement.toId)} ${money(a.settlement.amount, g)}.`;
+      case 'editSettlement': return `Edited settlement ${esc(a.id)}.`;
+      case 'deleteSettlement': return `Deleted settlement ${esc(a.id)}.`;
+      case 'setCurrency': return `The group's currency is now ${esc(a.currency)}.`;
+      case 'setOption': return `Self-settlement is now ${a.value ? 'allowed' : 'refused'} (undecided rule).`;
+      case 'load': return 'Loaded a group.';
+      default: return a.type;
+    }
+  }
+
+  function describeChange(before, after, a, label) {
+    const parts = [`<b>${label ? esc(label) + ' ' : ''}</b>${describeAction(before, a)}`];
+    if (a.type === 'load') return { kind: 'ok', html: parts.join('') };
+    const Lb = P.ledger(before), La = P.ledger(after);
+    const diffs = [];
+    for (const m of after.members) {
+      const b = Lb.get(m.id)?.balance ?? 0, x = La.get(m.id).balance;
+      if (b !== x) diffs.push(`${name(after, m.id)} ${money(b, after)} → ${signed(x, after)}${x === 0 ? ' <span class="tag ok">settled up</span>' : ''}`);
+    }
+    const shown = diffs.length > 12 ? [...diffs.slice(0, 12), `and ${diffs.length - 12} more`] : diffs;
+    parts.push(diffs.length ? `<div class="muted" style="margin-top:4px">Balances: ${shown.join(' · ')}</div>` : '<div class="muted" style="margin-top:4px">No balance changed.</div>');
+    if (a.type === 'editExpense') {
+      const eb = before.expenses.find((e) => e.id === a.id), ea = after.expenses.find((e) => e.id === a.id);
+      const show = (g, e) => P.computeShares(e, g.members).shares.map((s) => `${name(g, s.memberId)} <span class="${s.extra ? 'extra' : ''}">${money(s.share, g)}</span>`).join(', ');
+      parts.push(`<div style="margin-top:4px">Shares before: ${show(before, eb)}<br>Shares after: ${show(after, ea)}<br><span class="muted">Highlighted shares got a leftover unit.</span></div>`);
+    }
+    const sb = P.suggestSettlements(before, Lb).length, sa = P.suggestSettlements(after, La).length;
+    if (sb !== sa) parts.push(`<div class="muted">Suggested settlements: ${sb} → ${sa}.</div>`);
+    return { kind: 'ok', html: parts.join('') };
+  }
+
+  // ---------- scenarios ----------
+  const idOf = (g, n) => g.members.find((m) => m.name === n)?.id;
+  const idsOf = (g, names) => (names === 'all' ? g.members.map((m) => m.id) : names === 'active' ? g.members.filter((m) => m.active).map((m) => m.id) : names.map((n) => idOf(g, n)));
+  const expenseId = (g, desc) => g.expenses.find((e) => e.description === desc)?.id;
+  const parse = (g, text) => P.parseAmount(text, g.currency);
+  const addMembers = (...names) => names.map((n) => ({ type: 'addMember', name: n }));
+  const E = (description, amountText, payer, parts, date = TODAY) => (g) => {
+    const p = parse(g, amountText);
+    if (p.error) return { error: p.error };
+    return { type: 'addExpense', expense: { description, amount: p.value, payerId: idOf(g, payer), participantIds: idsOf(g, parts), date } };
+  };
+  const S = (from, to, amountText) => (g) => {
+    const p = parse(g, amountText);
+    if (p.error) return { error: p.error };
+    return { type: 'addSettlement', settlement: { fromId: idOf(g, from), toId: idOf(g, to), amount: p.value, date: TODAY } };
+  };
+  const recordFirstSuggestion = (g) => {
+    const s = P.suggestSettlements(g)[0];
+    return s ? { type: 'addSettlement', settlement: { ...s, date: TODAY } } : null;
+  };
+  const editExpense = (desc, changes) => (g) => {
+    const out = {};
+    if (changes.participants) out.participantIds = idsOf(g, changes.participants);
+    if (changes.amount) out.amount = parse(g, changes.amount).value;
+    if (changes.payer) out.payerId = idOf(g, changes.payer);
+    return { type: 'editExpense', id: expenseId(g, desc), changes: out };
+  };
+
+  function bigGroup(memberCount, expenseCount, seed) {
+    const r = P.sim.rng(seed);
+    const g = P.emptyGroup('USD');
+    g.members = Array.from({ length: memberCount }, (_, i) => ({ id: `mem-${i + 1}`, name: `Member ${i + 1}`, order: i + 1, active: true }));
+    for (let i = 1; i <= expenseCount; i++) {
+      const ids = g.members.map((m) => m.id);
+      const payerId = ids[Math.floor(r() * ids.length)];
+      let participantIds = r() < 0.5 ? ids.slice() : ids.filter(() => r() < 0.2);
+      if (!participantIds.some((id) => id !== payerId)) participantIds.push(ids.find((id) => id !== payerId));
+      g.expenses.push({ id: `exp-${i}`, description: `Expense ${i}`, amount: 100 + Math.floor(r() * 99900), date: TODAY, payerId, participantIds });
+    }
+    g.seq = { member: memberCount + 1, expense: expenseCount + 1, settlement: 1 };
+    return g;
+  }
+
+  const SCENARIOS = [
+    {
+      id: 'happy', title: 'Happy path',
+      intro: 'Ana, Ben and Cai have dinner and a taxi. $100.00 doesn’t split evenly three ways, so one participant’s share gets the odd cent.',
+      watch: 'Which participant gets the extra cent, and how the expense card explains it. After recording the suggested settlements, everyone is <b>settled up</b>.',
+      setup: addMembers('Ana', 'Ben', 'Cai'),
+      steps: [
+        { label: 'Ana pays $100.00 for dinner, split among all three', act: E('Dinner', '100.00', 'Ana', 'all') },
+        { label: 'Ben pays $45.00 for a taxi, split among all three', act: E('Taxi', '45.00', 'Ben', 'all') },
+        { label: 'Record the first suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+      ],
+    },
+    {
+      id: 'greedy', title: 'Greedy isn’t fewest',
+      intro: 'Five friends. Three one-person expenses leave balances of Ana +20, Ben +40, Cai −50, Dee −40, Eli +30. Dee owes exactly what Ben is owed, so 3 settlements would do: Dee→Ben 40, Cai→Eli 30, Cai→Ana 20.',
+      watch: 'Greedy starts with the largest debtor (Cai, −50) and the largest creditor (Ben, +40), which breaks the neat Dee↔Ben pair. It suggests <b>4</b>. The suggested-settlements panel shows the true minimum next to it. The Experiments tab measures how often this happens.',
+      setup: addMembers('Ana', 'Ben', 'Cai', 'Dee', 'Eli'),
+      steps: [
+        { label: 'Ben pays $40.00 for Dee’s concert ticket (Dee only)', act: E('Concert ticket', '40.00', 'Ben', ['Dee']) },
+        { label: 'Ana pays $20.00 for Cai’s taxi (Cai only)', act: E('Taxi', '20.00', 'Ana', ['Cai']) },
+        { label: 'Eli pays $30.00 for Cai’s groceries (Cai only)', act: E('Groceries', '30.00', 'Eli', ['Cai']) },
+        { label: 'Record the first suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+      ],
+    },
+    {
+      id: 'edit', title: 'Editing moves the cent',
+      intro: 'The odd cent goes to participants in a rotation that starts at hash(expense id) mod n. Changing the number of participants changes n, so the start of the rotation can jump to someone whose participation didn’t change.',
+      watch: 'The “what changed” box shows shares before and after each edit. Step 2 swaps Ben for Dee, and the extra cent lands on <b>Cai</b>, who wasn’t touched. Step 4 restores the original, and the shares come back exactly, because shares are a pure function of the expense.',
+      setup: [...addMembers('Ana', 'Ben', 'Cai', 'Dee'), E('Coffee', '8.00', 'Dee', 'all')],
+      steps: [
+        { label: 'Ana pays $10.00 for pizza, split among Ana, Ben, Cai', act: E('Pizza', '10.00', 'Ana', ['Ana', 'Ben', 'Cai']) },
+        { label: 'Edit pizza: swap Ben for Dee (Ana, Cai, Dee)', act: editExpense('Pizza', { participants: ['Ana', 'Cai', 'Dee'] }) },
+        { label: 'Edit pizza amount to $10.01', act: editExpense('Pizza', { amount: '10.01' }) },
+        { label: 'Edit pizza back to $10.00 among Ana, Ben, Cai', act: editExpense('Pizza', { amount: '10.00', participants: ['Ana', 'Ben', 'Cai'] }) },
+      ],
+    },
+    {
+      id: 'jpy', title: 'JPY (0 decimals)',
+      intro: 'Yen has no minor units, so the “odd cent” is a whole yen. ¥100 among 7 leaves 2 yen over. ¥6 among 7 gives some participants a share of ¥0.',
+      watch: 'Formatting shows no decimals. Typing ¥10.5 is refused. With ¥6 among 7, one participant is a participant with a <b>zero share</b>. Is that what a person would expect?',
+      currency: 'JPY',
+      setup: addMembers('Ana', 'Ben', 'Cai', 'Dee', 'Eli', 'Fay', 'Gus'),
+      steps: [
+        { label: 'Ana pays ¥100 for snacks, split among all 7', act: E('Snacks', '100', 'Ana', 'all') },
+        { label: 'Try: Ben pays ¥10.5 (should be refused)', act: E('Gum', '10.5', 'Ben', 'all') },
+        { label: 'Ben pays ¥6 for sweets, split among all 7', act: E('Sweets', '6', 'Ben', 'all') },
+        { label: 'Cai pays ¥1,000,000 for a trip, split among all 7', act: E('Trip', '1,000,000', 'Cai', 'all') },
+        { label: 'Record the first suggested settlement', act: recordFirstSuggestion },
+      ],
+    },
+    {
+      id: 'bhd', title: 'BHD (3 decimals)',
+      intro: 'Bahraini dinar has three decimals. 10.000 BHD among 3 leaves 0.001 over. 0.001 BHD among 2 means one participant pays the whole amount and the other pays nothing.',
+      watch: 'Formatting always shows three decimals. A fourth decimal is refused. The 0.001 expense gives a share of 0.000.',
+      currency: 'BHD',
+      setup: addMembers('Ana', 'Ben', 'Cai'),
+      steps: [
+        { label: 'Ana pays BHD 10.000 for lunch, split among all three', act: E('Lunch', '10.000', 'Ana', 'all') },
+        { label: 'Try: Ben pays BHD 1.2345 (should be refused)', act: E('Water', '1.2345', 'Ben', 'all') },
+        { label: 'Ben pays BHD 0.001, split between Ben and Cai', act: E('Mint', '0.001', 'Ben', ['Ben', 'Cai']) },
+        { label: 'Cai pays BHD 10,000,000.000 (exactly the cap), split among all', act: E('Cap test', '10,000,000.000', 'Cai', 'all') },
+      ],
+    },
+    {
+      id: 'huf', title: 'HUF display',
+      intro: 'ISO 4217 says HUF has 2 decimals. Browsers’ built-in currency data says 0, so default formatting would show 1,234.56 HUF as “HUF 1,235”. The prototype always passes the ISO digits explicitly.',
+      watch: 'Every amount shows 2 decimals. Is that how someone in Hungary would expect forints to look? (Cash in Hungary has no fillér.)',
+      currency: 'HUF',
+      setup: addMembers('Ana', 'Ben', 'Cai'),
+      steps: [
+        { label: 'Ana pays HUF 1,234.56 for groceries, split among all three', act: E('Groceries', '1234.56', 'Ana', 'all') },
+        { label: 'Ben pays HUF 9,990 for a dinner, split among all three', act: E('Dinner', '9990', 'Ben', 'all') },
+      ],
+    },
+    {
+      id: 'inactive', title: 'Inactive with a balance',
+      intro: 'Dee moves out still owing $30.00. Making Dee inactive only stops Dee being pre-selected in new expenses. Dee must stay in balances and suggested settlements.',
+      watch: 'Dee keeps a balance and a suggested settlement while inactive. The next expense “split among active members” leaves Dee out. An inactive member can still record a settlement and can still be picked by hand.',
+      setup: [...addMembers('Ana', 'Ben', 'Cai', 'Dee'), E('Groceries', '120.00', 'Ana', 'all')],
+      steps: [
+        { label: 'Make Dee inactive', act: (g) => ({ type: 'setMemberActive', id: idOf(g, 'Dee'), active: false }) },
+        { label: 'Ben pays $60.00 for cleaning, split among active members', act: E('Cleaning', '60.00', 'Ben', 'active') },
+        { label: 'Dee (inactive) pays Ana $30.00: record a settlement', act: S('Dee', 'Ana', '30.00') },
+        { label: 'Ana pays $40.00 for a farewell lunch with Dee, Dee picked by hand', act: E('Farewell lunch', '40.00', 'Ana', ['Ana', 'Dee']) },
+        { label: 'Reactivate Dee', act: (g) => ({ type: 'setMemberActive', id: idOf(g, 'Dee'), active: true }) },
+      ],
+    },
+    {
+      id: 'delete', title: 'Deleting members',
+      intro: 'A member can be deleted only if no expense or settlement mentions them. Otherwise they can only be made inactive.',
+      watch: 'Deleting a participant, a payer, or someone in a settlement is refused, with the reason. Deleting someone unreferenced works. Renaming changes the name everywhere.',
+      setup: [...addMembers('Ana', 'Ben', 'Cai'), E('Breakfast', '30.00', 'Ana', ['Ana', 'Ben'])],
+      steps: [
+        { label: 'Try: delete Ben (a participant)', act: (g) => ({ type: 'deleteMember', id: idOf(g, 'Ben') }) },
+        { label: 'Try: delete Ana (a payer)', act: (g) => ({ type: 'deleteMember', id: idOf(g, 'Ana') }) },
+        { label: 'Delete Cai (not mentioned anywhere)', act: (g) => ({ type: 'deleteMember', id: idOf(g, 'Cai') }) },
+        { label: 'Add Eve', act: () => ({ type: 'addMember', name: 'Eve' }) },
+        { label: 'Eve lends Ben $5.00 (a settlement Eve → Ben)', act: S('Eve', 'Ben', '5.00') },
+        { label: 'Try: delete Eve (now in a settlement)', act: (g) => ({ type: 'deleteMember', id: idOf(g, 'Eve') }) },
+        { label: 'Rename Ben to “Benjamin”', act: (g) => ({ type: 'renameMember', id: idOf(g, 'Ben'), name: 'Benjamin' }) },
+      ],
+    },
+    {
+      id: 'overpay', title: 'Overpayment and loans',
+      intro: 'A settlement can be any positive amount, whatever it does to balances. Ben owes Ana $40.00 and sends $100.00. Separately, Cai lends Dee $50.00, recorded as a settlement from lender to borrower.',
+      watch: 'After the overpayment, Ana owes Ben and the suggestion flips direction. The loan makes Dee owe Cai. Deleting the overpayment restores everything.',
+      setup: [...addMembers('Ana', 'Ben', 'Cai', 'Dee'), E('Concert', '80.00', 'Ana', ['Ana', 'Ben'])],
+      steps: [
+        { label: 'Ben pays Ana $100.00 (overpays by $60.00)', act: S('Ben', 'Ana', '100.00') },
+        { label: 'Cai lends Dee $50.00 (settlement Cai → Dee)', act: S('Cai', 'Dee', '50.00') },
+        { label: 'Ana pays Ben back $25.00 (partial)', act: S('Ana', 'Ben', '25.00') },
+        { label: 'Delete the $100.00 overpayment', act: (g) => ({ type: 'deleteSettlement', id: g.settlements.find((t) => t.amount === 10000)?.id }) },
+      ],
+    },
+    {
+      id: 'gift', title: 'Gifts and refusals',
+      intro: 'The payer is a participant only if included, so a gift (payer not a participant) is valid. An expense where the payer is the only participant is not. Amounts are positive and capped at 10,000,000.',
+      watch: 'Which attempts are refused, and whether the refusal messages make sense to a non-developer.',
+      setup: addMembers('Ana', 'Ben', 'Cai'),
+      steps: [
+        { label: 'Ana pays $30.00 for Ben’s birthday gift (Ben only)', act: E('Birthday gift', '30.00', 'Ana', ['Ben']) },
+        { label: 'Try: Ana pays $12.00 with only Ana as participant', act: E('Ana’s lunch', '12.00', 'Ana', ['Ana']) },
+        { label: 'Try: an expense of $0.00', act: E('Nothing', '0.00', 'Ana', 'all') },
+        { label: 'Try: an expense of −$5.00 (a refund)', act: E('Refund', '-5.00', 'Ana', 'all') },
+        { label: 'Try: $10,000,000.01 (one cent over the cap)', act: E('Too big', '10000000.01', 'Ana', 'all') },
+        { label: '$10,000,000.00 (exactly the cap)', act: E('Exactly the cap', '10000000.00', 'Ana', 'all') },
+        { label: 'Delete the $10,000,000.00 expense', act: (g) => ({ type: 'deleteExpense', id: expenseId(g, 'Exactly the cap') }) },
+      ],
+    },
+    {
+      id: 'self', title: 'Self-settlement (undecided)',
+      intro: 'Should a member be able to record a settlement to themselves? The rule isn’t decided. The prototype refuses by default, and a switch under “Group” allows it so you can see what it would do.',
+      watch: 'Allowed, it is recorded but changes no balance: “made” and “received” both go up by the same amount. A record that does nothing.',
+      setup: [...addMembers('Ana', 'Ben'), E('Pizza', '20.00', 'Ana', 'all')],
+      steps: [
+        { label: 'Try: Ana records $10.00 to Ana', act: S('Ana', 'Ana', '10.00') },
+        { label: 'Allow self-settlement', act: () => ({ type: 'setOption', key: 'allowSelfSettlement', value: true }) },
+        { label: 'Ana records $10.00 to Ana', act: S('Ana', 'Ana', '10.00') },
+      ],
+    },
+    {
+      id: 'caps', title: 'At the caps',
+      intro: '50 members and 5,000 expenses. Everything is recomputed after every change, and nothing is stored but the expenses and settlements.',
+      watch: 'The timing in the state panel (“recomputed in … ms”). The 5,001st expense and the 51st member are refused. The exact-minimum check gives up here, because it is exponential.',
+      setup: [],
+      steps: [
+        { label: 'Load 50 members and 4,999 random expenses', act: () => ({ type: 'load', state: bigGroup(50, 4999, 11) }) },
+        { label: 'Add the 5,000th expense', act: E('Number 5000', '12.34', 'Member 1', 'all') },
+        { label: 'Try: add a 5,001st expense', act: E('Number 5001', '12.34', 'Member 2', 'all') },
+        { label: 'Try: add a 51st member', act: () => ({ type: 'addMember', name: 'Member 51' }) },
+        { label: 'Edit expense 1 (amount $99.99)', act: () => ({ type: 'editExpense', id: 'exp-1', changes: { amount: 9999 } }) },
+        { label: 'Record the first suggested settlement', act: recordFirstSuggestion },
+      ],
+    },
+    {
+      id: 'flat', title: 'The flat: a month plus a trip',
+      intro: 'Four flatmates share a month of household expenses, then travel together. Some expenses leave people out. This is the first real group.',
+      watch: 'Whether the balances and the expense cards are easy to follow, and whether three suggested settlements bring everyone to settled up.',
+      currency: 'EUR',
+      setup: addMembers('Ana', 'Ben', 'Cai', 'Dee'),
+      steps: [
+        { label: 'Ana pays rent €2,400.00 (all)', act: E('Rent', '2400.00', 'Ana', 'all', '2026-11-01') },
+        { label: 'Ben pays electricity €87.43 (all)', act: E('Electricity', '87.43', 'Ben', 'all', '2026-11-03') },
+        { label: 'Cai pays internet €39.99 (all)', act: E('Internet', '39.99', 'Cai', 'all', '2026-11-04') },
+        { label: 'Dee pays groceries €64.20 (all)', act: E('Groceries week 1', '64.20', 'Dee', 'all', '2026-11-05') },
+        { label: 'Ana pays groceries €52.75 (Ana and Ben; the others are away)', act: E('Groceries week 2', '52.75', 'Ana', ['Ana', 'Ben'], '2026-11-12') },
+        { label: 'Ben pays cleaning supplies €18.00 (all)', act: E('Cleaning supplies', '18.00', 'Ben', 'all', '2026-11-14') },
+        { label: 'Trip: Cai pays the hotel €640.00 (all)', act: E('Hotel', '640.00', 'Cai', 'all', '2026-11-20') },
+        { label: 'Trip: Dee pays car rental €213.50 (all)', act: E('Car rental', '213.50', 'Dee', 'all', '2026-11-20') },
+        { label: 'Trip: Ana pays dinner €96.30 (Ana, Cai, Dee; Ben skipped)', act: E('Trip dinner', '96.30', 'Ana', ['Ana', 'Cai', 'Dee'], '2026-11-21') },
+        { label: 'Trip: Ben pays a museum €45.00 (Ben and Dee)', act: E('Museum', '45.00', 'Ben', ['Ben', 'Dee'], '2026-11-22') },
+        { label: 'Record the first suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+        { label: 'Record the next suggested settlement', act: recordFirstSuggestion },
+      ],
+    },
+  ];
+
+  function startScenario(sc) {
+    let g = P.emptyGroup(sc.currency || 'USD');
+    for (const step of sc.setup) {
+      const a = typeof step === 'function' ? step(g) : step;
+      const res = P.reduce(g, a);
+      if (res.error) throw new Error(`Scenario setup failed: ${res.error}`);
+      g = res.state;
+    }
+    group = g;
+    stepIndex = 0;
+    exDraft = freshExpenseDraft(); stDraft = freshSettlementDraft();
+    change = { kind: 'ok', html: `<b>Scenario “${esc(sc.title)}” reset.</b> Press the steps in order.` };
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    renderTabs(); renderGuide(); renderFreeplay(); renderChange(); renderState();
+  }
+
+  function renderTabs() {
+    const tabs = [['free', 'Free play'], ...SCENARIOS.map((s) => [s.id, s.title]), ['experiments', 'Experiments']];
+    $('#tabs').innerHTML = tabs.map(([id, t]) => `<button data-act="tab" data-id="${id}" class="${tab === id ? 'on' : ''}">${esc(t)}</button>`).join('');
+  }
+
+  function renderGuide() {
+    if (tab === 'free') {
+      $('#guide').innerHTML = `<div class="card"><h2>Free play</h2><p class="muted" style="margin:0">Use the forms below in any order. The right-hand side shows every member’s balance and how it was worked out, the suggested settlements, and each expense’s shares. Scenario tabs load a known starting point and walk you through a case. You can keep using free play during a scenario.</p></div>`;
+      return;
+    }
+    if (tab === 'experiments') { $('#guide').innerHTML = renderExperiments(); return; }
+    const sc = SCENARIOS.find((s) => s.id === tab);
+    $('#guide').innerHTML = `<div class="card"><h2>${esc(sc.title)}</h2>
+      <p style="margin:0 0 6px">${sc.intro}</p>
+      <p class="muted" style="margin:0"><b>Watch for:</b> ${sc.watch}</p>
+      <ol class="steps">
+        <li><span class="n">↺</span><button data-act="restart">Start over (resets to this scenario’s starting point)</button></li>
+        ${sc.steps.map((s, i) => `<li class="${i < stepIndex ? 'done' : i === stepIndex ? 'next' : ''}"><span class="n">${i + 1}.</span>
+          <button data-act="step" data-i="${i}" ${i === stepIndex ? '' : 'disabled'}>${i < stepIndex ? '✓ ' : ''}${esc(s.label)}</button></li>`).join('')}
+      </ol>
+      ${stepIndex >= sc.steps.length ? '<p class="muted">Done. Free play still works from here.</p>' : ''}</div>`;
+  }
+
+  function memberOptions(selected, { blank = true } = {}) {
+    return (blank ? '<option value="">Choose…</option>' : '') + group.members.map((m) =>
+      `<option value="${m.id}" ${m.id === selected ? 'selected' : ''}>${esc(m.name)}${m.active ? '' : ' (inactive)'}</option>`).join('');
+  }
+
+  function draftParticipants() {
+    const ids = exDraft.participantIds ?? group.members.filter((m) => m.active).map((m) => m.id);
+    return ids.filter((id) => group.members.some((m) => m.id === id));
+  }
+
+  function renderFreeplay() {
+    const c = group.currency;
+    const parts = new Set(draftParticipants());
+    const editingE = exDraft.editingId, editingS = stDraft.editingId;
+    $('#freeplay').innerHTML = `
+      <div class="card"><h2>Group</h2>
+        <div class="row">
+          <div><label>Currency (one per group)</label><select data-act="currency">${Object.entries(P.CURRENCIES).map(([k, v]) => `<option value="${k}" ${k === c ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>
+        </div>
+        <label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input type="checkbox" data-act="selfopt" ${group.options.allowSelfSettlement ? 'checked' : ''}> Allow a member to record a settlement with themselves <span class="tag">undecided</span></label>
+      </div>
+      <div class="card"><h2>Members <span class="muted">(${group.members.length} of ${P.LIMITS.members})</span></h2>
+        <div class="row"><div><input type="text" id="newMember" placeholder="Name"></div><div style="flex:0"><button class="primary" data-act="addMember">Add member</button></div></div>
+        <p class="muted" style="margin:6px 0 0">Rename, make inactive or delete from the balances table.</p>
+      </div>
+      <div class="card" id="expenseForm"><h2>${editingE ? `Edit expense ${esc(editingE)}` : 'Add an expense'}</h2>
+        <div class="row">
+          <div><label>Description</label><input type="text" data-draft="ex.description" value="${esc(exDraft.description)}"></div>
+          <div><label>Amount (${c})</label><input type="text" inputmode="decimal" data-draft="ex.amountText" value="${esc(exDraft.amountText)}" placeholder="${['1234', '12.3', '12.34', '12.345'][P.digitsOf(c)]}"></div>
+          <div><label>Date</label><input type="date" data-draft="ex.date" value="${esc(exDraft.date)}"></div>
+        </div>
+        <label>Payer (exactly one)</label><select data-draft="ex.payerId">${memberOptions(exDraft.payerId)}</select>
+        <label>Participants <span class="muted">(active members are pre-selected; the payer is a participant only if ticked)</span></label>
+        <div class="checks">${group.members.map((m) => `<label><input type="checkbox" data-part="${m.id}" ${parts.has(m.id) ? 'checked' : ''}>${esc(m.name)}${m.active ? '' : ' <span class="tag">inactive</span>'}</label>`).join('') || '<span class="muted">Add members first.</span>'}</div>
+        <div id="sharePreview" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:8px"><div style="flex:0"><button class="primary" data-act="saveExpense">${editingE ? 'Save changes' : 'Add expense'}</button></div>${editingE ? '<div style="flex:0"><button data-act="cancelExpense">Cancel</button></div>' : ''}</div>
+      </div>
+      <div class="card" id="settlementForm"><h2>${editingS ? `Edit settlement ${esc(editingS)}` : 'Record a settlement'}</h2>
+        <p class="muted" style="margin:0">A record that one member paid another outside Potluck. Any positive amount.</p>
+        <div class="row">
+          <div><label>From (who paid)</label><select data-draft="st.fromId">${memberOptions(stDraft.fromId)}</select></div>
+          <div><label>To (who received)</label><select data-draft="st.toId">${memberOptions(stDraft.toId)}</select></div>
+        </div>
+        <div class="row">
+          <div><label>Amount (${c})</label><input type="text" inputmode="decimal" data-draft="st.amountText" value="${esc(stDraft.amountText)}"></div>
+          <div><label>Date</label><input type="date" data-draft="st.date" value="${esc(stDraft.date)}"></div>
+        </div>
+        <div class="row" style="margin-top:8px"><div style="flex:0"><button class="primary" data-act="saveSettlement">${editingS ? 'Save changes' : 'Record settlement'}</button></div>${editingS ? '<div style="flex:0"><button data-act="cancelSettlement">Cancel</button></div>' : ''}</div>
+      </div>
+      <div class="card"><h2>Share this case</h2>
+        <p class="muted" style="margin:0 0 6px">Export the whole group as JSON to send someone a case that breaks. Paste one in and press Import to load it.</p>
+        <textarea id="json"></textarea>
+        <div class="row" style="margin-top:6px"><div style="flex:0"><button data-act="export">Export</button></div><div style="flex:0"><button data-act="import">Import</button></div></div>
+      </div>`;
+    renderPreview();
+  }
+
+  function renderPreview() {
+    const el = $('#sharePreview');
+    if (!el) return;
+    const p = P.parseAmount(exDraft.amountText, group.currency);
+    const parts = draftParticipants();
+    if (!exDraft.amountText.trim() || !parts.length) { el.innerHTML = ''; return; }
+    if (p.error) { el.innerHTML = `<div class="muted neg">${esc(p.error)}</div>`; return; }
+    if (p.value <= 0) { el.innerHTML = ''; return; }
+    const id = exDraft.editingId || P.nextExpenseId(group);
+    const sh = P.computeShares({ id, amount: p.value, participantIds: parts }, group.members);
+    let before = '';
+    if (exDraft.editingId) {
+      const old = group.expenses.find((e) => e.id === exDraft.editingId);
+      before = `<div class="shares">Now: ${sharesLine(group, old)}</div>`;
+    }
+    el.innerHTML = `<div class="callout warn" style="margin:0"><div class="shares">Preview${exDraft.editingId ? ' after saving' : ''}: ${sharesLineFrom(group, sh)}</div>${before}<div class="muted">${working(group, id, p.value, sh)}</div></div>`;
+  }
+
+  const sharesLineFrom = (g, sh) => sh.shares.map((s) => `${name(g, s.memberId)} <b class="${s.extra ? 'extra' : ''}">${money(s.share, g)}</b>`).join(' · ');
+  const sharesLine = (g, e) => sharesLineFrom(g, P.computeShares(e, g.members));
+  function working(g, id, amount, sh) {
+    const unit = P.digitsOf(g.currency) === 0 ? 'unit' : 'minor unit';
+    const startName = name(g, sh.shares[sh.offset].memberId);
+    if (sh.r === 0) return `${amount.toLocaleString('en-US')} ${unit}s ÷ ${sh.n} = ${sh.q.toLocaleString('en-US')} each, nothing left over.`;
+    return `${amount.toLocaleString('en-US')} ${unit}s ÷ ${sh.n} = ${sh.q.toLocaleString('en-US')} each, ${sh.r} left over. Rotation starts at participant ${sh.offset + 1} of ${sh.n} by creation order (${startName}), because hash(“${esc(id)}”) mod ${sh.n} = ${sh.offset}. Highlighted shares got +1.`;
+  }
+
+  function renderChange() {
+    $('#change').innerHTML = `<div class="callout ${change.kind}">${change.html}</div>`;
+  }
+
+  function renderState() {
+    const t0 = performance.now();
+    const g = group;
+    const L = P.ledger(g);
+    const problems = P.checkInvariants(g, L);
+    const sugg = P.suggestSettlements(g, L);
+    const entries = P.balanceEntries(g, L);
+    const fewest = P.fewestSettlements(entries);
+    const derivedMs = performance.now() - t0;
+    const total = [...L.values()].reduce((a, r) => a + r.balance, 0);
+
+    const memberRows = g.members.map((m) => {
+      const r = L.get(m.id);
+      return `<tr><td>${esc(m.name)}${m.active ? '' : ' <span class="tag">inactive</span>'}${r.balance === 0 ? ' <span class="tag ok">settled up</span>' : ''}<div class="muted" style="font-size:11px">#${m.order}</div></td>
+        <td class="num">${money(r.paid)}</td><td class="num">${money(r.made)}</td><td class="num">−${money(r.shares)}</td><td class="num">−${money(r.received)}</td>
+        <td class="num"><b>${signed(r.balance)}</b></td>
+        <td style="white-space:nowrap"><button class="link" data-act="rename" data-id="${m.id}">Rename</button><button class="link" data-act="toggleActive" data-id="${m.id}">${m.active ? 'Make inactive' : 'Reactivate'}</button><button class="link" data-act="deleteMember" data-id="${m.id}">Delete</button></td></tr>`;
+    }).join('');
+
+    let fewestNote;
+    if (!fewest) fewestNote = `<span class="muted">Fewest possible: not computed (${entries.length} members have a nonzero balance; the exact search is exponential and gives up above ${P.FEWEST_LIMIT}).</span>`;
+    else if (fewest.count === sugg.length) fewestNote = `<span class="muted">Greedy: ${sugg.length}. Fewest possible: ${fewest.count}. ✓ Same.</span>`;
+    else fewestNote = `<div class="callout bad" style="margin:6px 0 0"><b>Greedy suggests ${sugg.length}, but ${fewest.count} would do.</b> One shortest set (for comparison only, not the rule): ${fewest.plan.map((s) => `${name(g, s.fromId)} → ${name(g, s.toId)} ${money(s.amount)}`).join(' · ')}</div>`;
+
+    const expShown = g.expenses.slice(-60).reverse();
+    const expHtml = expShown.map((e) => {
+      const sh = P.computeShares(e, g.members);
+      return `<div class="expense"><div><b>${esc(e.description || '(no description)')}</b> · ${money(e.amount)} · paid by ${name(g, e.payerId)} <span class="muted">· ${esc(e.date)} · ${esc(e.id)}${e.participantIds.includes(e.payerId) ? '' : ' · payer not a participant'}</span>
+        <span style="float:right"><button class="link" data-act="editExpense" data-id="${e.id}">Edit</button><button class="link" data-act="deleteExpense" data-id="${e.id}">Delete</button></span></div>
+        <div class="shares">Shares: ${sharesLineFrom(g, sh)}</div><div class="muted" style="font-size:12px">${working(g, e.id, e.amount, sh)}</div></div>`;
+    }).join('');
+
+    const setHtml = g.settlements.slice().reverse().map((t) => `<tr><td>${name(g, t.fromId)} → ${name(g, t.toId)}</td><td class="num">${money(t.amount)}</td><td class="muted">${esc(t.date)} · ${esc(t.id)}</td>
+      <td style="white-space:nowrap"><button class="link" data-act="editSettlement" data-id="${t.id}">Edit</button><button class="link" data-act="deleteSettlement" data-id="${t.id}">Delete</button></td></tr>`).join('');
+
+    $('#statepanel').innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <h2 style="margin:0">Group · ${esc(g.currency)} <span class="muted">(${P.digitsOf(g.currency)} decimals)</span></h2>
+          <span>${problems.length ? `<span class="tag bad">INVARIANT BROKEN: ${esc(problems.join(' '))}</span>` : `<span class="tag ok">Balances sum to ${money(total)} ✓</span>`}
+          <span class="tag">recomputed in ${derivedMs.toFixed(1)} ms${timingMs ? ` · last action ${timingMs.toFixed(1)} ms` : ''}</span></span>
+        </div>
+        <p class="muted" style="margin:4px 0 0">${g.members.length} members · ${g.expenses.length.toLocaleString('en-US')} expenses · ${g.settlements.length} settlements</p>
+      </div>
+      <div class="card"><h2>Balances</h2>
+        <p class="muted" style="margin:0 0 6px">Balance = paid for expenses + settlements made − shares − settlements received. Positive: the group owes them. Negative: they owe the group.</p>
+        <div style="overflow-x:auto"><table><thead><tr><th>Member</th><th class="num">Paid</th><th class="num">Settl. made</th><th class="num">Shares</th><th class="num">Settl. received</th><th class="num">Balance</th><th></th></tr></thead>
+        <tbody>${memberRows || '<tr><td colspan="7" class="muted">No members yet.</td></tr>'}</tbody></table></div>
+      </div>
+      <div class="card"><h2>Suggested settlements</h2>
+        <p class="muted" style="margin:0 0 6px">Recomputed after every change, never stored. Greedy: the largest debtor pays the largest creditor, repeated until every balance is zero.</p>
+        ${sugg.length ? `<table><tbody>${sugg.map((s, i) => `<tr><td>${name(g, s.fromId)} → ${name(g, s.toId)}</td><td class="num">${money(s.amount)}</td><td><button data-act="prefill" data-i="${i}">Record this settlement</button></td></tr>`).join('')}</tbody></table>` : `<p class="muted" style="margin:0">${g.members.length ? 'None: everyone is settled up.' : 'None.'}</p>`}
+        <div style="margin-top:6px">${fewestNote}</div>
+      </div>
+      <div class="card"><h2>Expenses ${g.expenses.length > 60 ? `<span class="muted">(latest 60 of ${g.expenses.length.toLocaleString('en-US')})</span>` : ''}</h2>${expHtml || '<p class="muted" style="margin:0">None yet.</p>'}</div>
+      <div class="card"><h2>Settlements</h2>${setHtml ? `<table><tbody>${setHtml}</tbody></table>` : '<p class="muted" style="margin:0">None yet.</p>'}</div>`;
+  }
+
+  // ---------- experiments ----------
+  function renderExperiments() {
+    const gx = experiments.greedy, fx = experiments.fairness;
+    const greedyTable = (style, rows) => `<h3>${style === 'cents' ? 'Amounts like $37.81' : 'Round amounts like $40.00, $120.00'}</h3>
+      <table><thead><tr><th>Members</th><th class="num">Greedy worse</th><th class="num">Worst extra</th><th class="num">Avg greedy</th><th class="num">Avg fewest</th><th></th></tr></thead><tbody>
+      ${rows.map((r, i) => `<tr><td>${r.members}</td><td class="num">${(100 * r.worse / r.trials).toFixed(1)}%</td><td class="num">${r.maxExtra ? '+' + r.maxExtra : '0'}</td><td class="num">${(r.greedyTotal / r.trials).toFixed(2)}</td><td class="num">${(r.fewestTotal / r.trials).toFixed(2)}</td>
+      <td>${r.example ? `<button class="link" data-act="loadExample" data-style="${style}" data-i="${i}">Load worst</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+    const maxBar = fx ? Math.max(...fx.rows.map((r) => Math.max(r.rotation, r.firstK)), 1) : 1;
+    return `<div class="card"><h2>Experiment 1: how often is greedy not the fewest?</h2>
+      <p class="muted" style="margin:0 0 6px">For each group size, build random groups (8–37 expenses each; 60% split among everyone, the rest among a random subset), then compare the greedy suggested settlements with the true minimum. Greedy is never worse than “members with a nonzero balance − 1”. It can only lose when some members’ balances cancel out among themselves.</p>
+      <div class="row"><div><label>Groups per size</label><input type="text" id="gTrials" value="1000"></div><div style="flex:0"><button class="primary" data-act="runGreedy">Run</button></div></div>
+      ${gx ? greedyTable('cents', gx.cents) + greedyTable('round', gx.round) + `<p class="muted">${gx.ms.toFixed(0)} ms.</p>` : ''}
+    </div>
+    <div class="card"><h2>Experiment 2: who absorbs the leftover units?</h2>
+      <p class="muted" style="margin:0 0 6px">Random small expenses ($1.00–$19.99) among 5 members. Each bar counts the leftover units a member absorbed under the rotation rule, compared with “first by creation order”.</p>
+      <div class="row"><div><label>Expenses</label><input type="text" id="fCount" value="1000"></div><div><label>Split among everyone</label><select id="fAll"><option value="0.5">50% of expenses</option><option value="1">100%</option><option value="0">0% (random subsets)</option></select></div><div style="flex:0"><button class="primary" data-act="runFairness">Run</button></div></div>
+      ${fx ? `<table style="margin-top:8px"><thead><tr><th>Member</th><th>Leftover units absorbed</th><th class="num">Chances</th></tr></thead><tbody>${fx.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>
+        <div style="display:flex;gap:6px;align-items:center"><div class="bar" style="width:${(160 * r.rotation / maxBar).toFixed(0)}px"></div><span class="muted">${r.rotation} rotation</span></div>
+        <div style="display:flex;gap:6px;align-items:center"><div class="bar alt" style="width:${(160 * r.firstK / maxBar).toFixed(0)}px"></div><span class="muted">${r.firstK} first-by-order</span></div></td>
+        <td class="num">${r.leftoverChances}</td></tr>`).join('')}</tbody></table>
+        <p class="muted">“Chances” is the number of expenses with a leftover in which the member was a participant. Total leftover units: ${fx.rows.reduce((a, r) => a + r.rotation, 0)}, which is about ${money(fx.rows.reduce((a, r) => a + r.rotation, 0), P.emptyGroup('USD'))} across ${fx.state.expenses.length} expenses.</p>
+        <button data-act="loadFairness">Load these expenses into the group</button>` : ''}
+    </div>`;
+  }
+
+  // ---------- events ----------
+  function startEditExpense(id) {
+    const e = group.expenses.find((x) => x.id === id);
+    const d = P.digitsOf(group.currency);
+    exDraft = { editingId: id, description: e.description, amountText: (e.amount / 10 ** d).toFixed(d), date: e.date, payerId: e.payerId, participantIds: e.participantIds.slice() };
+    render(); $('#expenseForm').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function saveExpense() {
+    const p = P.parseAmount(exDraft.amountText, group.currency);
+    if (p.error) return dispatch({ error: p.error });
+    const fields = { description: exDraft.description, amount: p.value, date: exDraft.date, payerId: exDraft.payerId, participantIds: draftParticipants() };
+    const ok = exDraft.editingId ? dispatch({ type: 'editExpense', id: exDraft.editingId, changes: fields }) : dispatch({ type: 'addExpense', expense: fields });
+    if (ok) { exDraft = freshExpenseDraft(); render(); }
+  }
+
+  function saveSettlement() {
+    const p = P.parseAmount(stDraft.amountText, group.currency);
+    if (p.error) return dispatch({ error: p.error });
+    const fields = { fromId: stDraft.fromId, toId: stDraft.toId, amount: p.value, date: stDraft.date };
+    const ok = stDraft.editingId ? dispatch({ type: 'editSettlement', id: stDraft.editingId, changes: fields }) : dispatch({ type: 'addSettlement', settlement: fields });
+    if (ok) { stDraft = freshSettlementDraft(); render(); }
+  }
+
+  const majorText = (v) => { const d = P.digitsOf(group.currency); return (v / 10 ** d).toFixed(d); };
+
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b || b.tagName === 'SELECT' || b.type === 'checkbox') return;
+    const id = b.dataset.id;
+    switch (b.dataset.act) {
+      case 'tab':
+        tab = id;
+        if (tab !== 'free' && tab !== 'experiments') startScenario(SCENARIOS.find((s) => s.id === tab));
+        render(); break;
+      case 'restart': startScenario(SCENARIOS.find((s) => s.id === tab)); render(); break;
+      case 'step': {
+        const sc = SCENARIOS.find((s) => s.id === tab);
+        const i = Number(b.dataset.i);
+        if (i !== stepIndex) return;
+        stepIndex++;
+        dispatch(sc.steps[i].act(group), `Step ${i + 1}:`);
+        break;
+      }
+      case 'addMember': {
+        const ok = dispatch({ type: 'addMember', name: $('#newMember').value });
+        if (ok) $('#newMember')?.focus();
+        break;
+      }
+      case 'rename': {
+        const n = prompt('New name', P.nameOf(group, id));
+        if (n !== null) dispatch({ type: 'renameMember', id, name: n });
+        break;
+      }
+      case 'toggleActive': dispatch({ type: 'setMemberActive', id, active: !group.members.find((m) => m.id === id).active }); break;
+      case 'deleteMember': dispatch({ type: 'deleteMember', id }); break;
+      case 'saveExpense': saveExpense(); break;
+      case 'cancelExpense': exDraft = freshExpenseDraft(); render(); break;
+      case 'editExpense': startEditExpense(id); break;
+      case 'deleteExpense':
+        if (confirm(`Delete expense ${id}? This is a hard delete: no undo, no history.`)) dispatch({ type: 'deleteExpense', id });
+        break;
+      case 'saveSettlement': saveSettlement(); break;
+      case 'cancelSettlement': stDraft = freshSettlementDraft(); render(); break;
+      case 'editSettlement': {
+        const t = group.settlements.find((x) => x.id === id);
+        stDraft = { editingId: id, fromId: t.fromId, toId: t.toId, amountText: majorText(t.amount), date: t.date };
+        render(); $('#settlementForm').scrollIntoView({ behavior: 'smooth' }); break;
+      }
+      case 'deleteSettlement':
+        if (confirm(`Delete settlement ${id}? No undo.`)) dispatch({ type: 'deleteSettlement', id });
+        break;
+      case 'prefill': {
+        const s = P.suggestSettlements(group)[Number(b.dataset.i)];
+        stDraft = { editingId: null, fromId: s.fromId, toId: s.toId, amountText: majorText(s.amount), date: TODAY };
+        change = { kind: 'warn', html: 'The settlement form is prefilled from the suggestion. It isn’t recorded until you press <b>Record settlement</b>.' };
+        render(); $('#settlementForm').scrollIntoView({ behavior: 'smooth' }); break;
+      }
+      case 'export': $('#json').value = JSON.stringify(group, null, 1); break;
+      case 'import': {
+        let parsed;
+        try { parsed = JSON.parse($('#json').value); } catch { dispatch({ error: 'That isn’t valid JSON.' }); break; }
+        dispatch({ type: 'load', state: parsed }, 'Imported.');
+        break;
+      }
+      case 'runGreedy': {
+        const trials = Math.max(10, Math.min(20000, Number($('#gTrials').value) || 1000));
+        const t0 = performance.now();
+        experiments.greedy = { cents: P.sim.greedyVsFewest({ trials, style: 'cents' }), round: P.sim.greedyVsFewest({ trials, style: 'round' }) };
+        experiments.greedy.ms = performance.now() - t0;
+        render(); break;
+      }
+      case 'loadExample': {
+        const ex = experiments.greedy[b.dataset.style][Number(b.dataset.i)].example;
+        dispatch({ type: 'load', state: ex }, 'Loaded the worst random group for this size.');
+        break;
+      }
+      case 'runFairness': {
+        const count = Math.max(1, Math.min(P.LIMITS.expenses, Number($('#fCount').value) || 1000));
+        experiments.fairness = P.sim.fairness({ expenseCount: count, allShare: Number($('#fAll').value) });
+        render(); break;
+      }
+      case 'loadFairness': dispatch({ type: 'load', state: experiments.fairness.state }, 'Loaded the fairness expenses.'); break;
+    }
+  });
+
+  document.addEventListener('change', (ev) => {
+    const el = ev.target;
+    if (el.dataset.act === 'currency') { if (!dispatch({ type: 'setCurrency', currency: el.value })) render(); return; }
+    if (el.dataset.act === 'selfopt') { dispatch({ type: 'setOption', key: 'allowSelfSettlement', value: el.checked }); return; }
+    if (el.dataset.part) {
+      const set = new Set(draftParticipants());
+      el.checked ? set.add(el.dataset.part) : set.delete(el.dataset.part);
+      exDraft.participantIds = group.members.map((m) => m.id).filter((id) => set.has(id));
+      renderPreview(); return;
+    }
+    onDraft(el);
+  });
+  document.addEventListener('input', (ev) => onDraft(ev.target));
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && ev.target.id === 'newMember') $('[data-act=addMember]').click(); });
+
+  function onDraft(el) {
+    const key = el.dataset?.draft;
+    if (!key) return;
+    const [form, field] = key.split('.');
+    (form === 'ex' ? exDraft : stDraft)[field] = el.value;
+    if (form === 'ex') renderPreview();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
