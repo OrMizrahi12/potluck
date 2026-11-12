@@ -13,7 +13,8 @@
     "check": "npm run typecheck && npm run lint && npm run check:deps && npm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.mts",
-    "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.mts"
+    "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.mts",
+    "prepare": "husky"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
@@ -32,6 +33,9 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.1.0"
