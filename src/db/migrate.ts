@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
-import { MIGRATIONS_FOLDER } from "./migrations";
+import { MIGRATIONS_FOLDER } from "./migrations-folder";
 
 // Arbitrary but fixed: every migration run in every environment takes this lock.
 const MIGRATION_LOCK_KEY = 7_406_812_001;

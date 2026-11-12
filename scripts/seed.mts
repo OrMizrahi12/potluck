@@ -1,11 +1,18 @@
-// The only source of data for local and `development` databases. Production
-// data is never copied anywhere.
-//
-// It applies the migrations, then loads fake data. The walking skeleton has no
-// domain tables yet, so there is nothing to load; the fake groups the spec
-// lists are added here as their tables arrive.
+// Applies the migrations, then loads the seed. See src/db/seed.ts.
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import { databaseUrl } from "../src/db/env";
 import { migrateDatabase } from "../src/db/migrate";
+import * as schema from "../src/db/schema";
+import { seed } from "../src/db/seed";
 
-await migrateDatabase(databaseUrl());
-console.log("Seed loaded (no fake data yet).");
+const url = databaseUrl();
+await migrateDatabase(url);
+
+const pool = new Pool({ connectionString: url });
+try {
+  await seed(drizzle({ client: pool, schema }));
+  console.log("Seed loaded.");
+} finally {
+  await pool.end();
+}

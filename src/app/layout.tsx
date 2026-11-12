@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Potluck",
-  description: "Split shared expenses in a group: who paid what, and who owes whom.",
+  description: "Track the money a group shares: who paid for what, and each member's balance.",
 };
 
 export const viewport: Viewport = {

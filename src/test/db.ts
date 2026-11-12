@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { MIGRATIONS_FOLDER } from "../db/migrations";
+import { MIGRATIONS_FOLDER } from "../db/migrations-folder";
 import * as schema from "../db/schema";
 import type { Db } from "../db/types";
 

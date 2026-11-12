@@ -6,7 +6,7 @@ import { readGreeting } from "@/db/greeting";
 async function Greeting() {
   await connection(); // read the database per request, never at build time
   const greeting = await readGreeting(getDb());
-  return <p>{greeting ?? "The database has no greeting. Run the migrations."}</p>;
+  return <p>{greeting ?? "Potluck reached its database, which has no seed data."}</p>;
 }
 
 export default function Home() {

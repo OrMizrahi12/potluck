@@ -1,6 +1,6 @@
 # Potluck
 
-A web app where a group splits shared expenses: who paid what, and who owes whom.
+A web app where a group tracks shared expenses: who paid for what, and what each member must pay or receive to come out even.
 
 ## Local development
 
