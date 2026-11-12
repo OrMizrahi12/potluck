@@ -1,5 +1,5 @@
-import { databaseUrl } from "../src/db/env";
+import { migrationDatabaseUrl } from "../src/db/env";
 import { migrateDatabase } from "../src/db/migrate";
 
-await migrateDatabase(databaseUrl());
+await migrateDatabase(migrationDatabaseUrl());
 console.log("Migrations applied.");
