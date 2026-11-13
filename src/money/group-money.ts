@@ -48,9 +48,9 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     }
     shares.set(expense.id, expenseShares);
   }
-  const net = new Map(input.members.map((m) => [m.id, 0]));
+  const balanceById = new Map(input.members.map((m) => [m.id, 0]));
   const add = (memberId: string, amount: number) =>
-    net.set(memberId, (net.get(memberId) ?? 0) + amount);
+    balanceById.set(memberId, (balanceById.get(memberId) ?? 0) + amount);
   for (const expense of input.expenses) {
     add(expense.payerId, expense.amount);
     for (const s of shares.get(expense.id) ?? []) add(s.memberId, -s.share);
@@ -61,7 +61,7 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
   }
   const balances = input.members.map((m) => ({
     memberId: m.id,
-    balance: net.get(m.id) ?? 0,
+    balance: balanceById.get(m.id) ?? 0,
   }));
 
   return { shares, balances, suggestedSettlements: suggest(balances) };
