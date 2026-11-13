@@ -18,11 +18,15 @@ export type GroupMoney = {
 export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
   const shares = new Map<string, Share[]>();
   for (const expense of input.expenses) {
-    const n = expense.participantIds.length;
+    const participating = new Set(expense.participantIds);
+    const participantIds = input.members
+      .map((m) => m.id)
+      .filter((id) => participating.has(id));
+    const n = participantIds.length;
     const base = Math.floor(expense.amount / n);
     const leftover = expense.amount % n;
     const offset = fnv1a32(expense.id) % n;
-    const expenseShares: Share[] = expense.participantIds.map((memberId) => ({
+    const expenseShares: Share[] = participantIds.map((memberId) => ({
       memberId,
       share: base,
       extra: 0,
