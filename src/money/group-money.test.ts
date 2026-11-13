@@ -141,4 +141,34 @@ describe("suggested settlements", () => {
       { fromId: "cy", toId: "ana", amount: 3000 },
     ]);
   });
+
+  // Spec #1's known non-minimal case: balances +20, +40, +30, -50, -40 give 4 suggestions.
+  // Greedy by hand: dee (-50) pays ben (+40) 40; eli (-40) pays cy (+30) 30;
+  // dee and eli now both owe 10 and ana is owed 20, so dee (earlier-created) pays first.
+  it("match the largest debtor with the largest creditor (spec's five-member example)", () => {
+    const { balances, suggestedSettlements } = computeGroupMoney({
+      members: [
+        { id: "ana" },
+        { id: "ben" },
+        { id: "cy" },
+        { id: "dee" },
+        { id: "eli" },
+      ],
+      expenses: [],
+      settlements: [
+        { fromId: "ana", toId: "dee", amount: 20 },
+        { fromId: "ben", toId: "dee", amount: 30 },
+        { fromId: "ben", toId: "eli", amount: 10 },
+        { fromId: "cy", toId: "eli", amount: 30 },
+      ],
+    });
+
+    expect(balances.map((b) => b.balance)).toEqual([20, 40, 30, -50, -40]);
+    expect(suggestedSettlements).toEqual([
+      { fromId: "dee", toId: "ben", amount: 40 },
+      { fromId: "eli", toId: "cy", amount: 30 },
+      { fromId: "dee", toId: "ana", amount: 10 },
+      { fromId: "eli", toId: "ana", amount: 10 },
+    ]);
+  });
 });

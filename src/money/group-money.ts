@@ -64,18 +64,29 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     balance: net.get(m.id) ?? 0,
   }));
 
-  const creditor = balances.reduce((best, b) =>
-    b.balance > best.balance ? b : best
-  );
-  const suggestedSettlements = balances
-    .filter((b) => b.balance < 0)
-    .map((b) => ({
-      fromId: b.memberId,
-      toId: creditor.memberId,
-      amount: -b.balance,
-    }));
+  return { shares, balances, suggestedSettlements: suggest(balances) };
+}
 
-  return { shares, balances, suggestedSettlements };
+// Greedy matching: repeatedly match the largest debtor with the largest
+// creditor for the smaller of the two amounts. Ties go to the earlier-created
+// member (balances arrive in creation order), so the result is deterministic.
+function suggest(balances: Balance[]): SuggestedSettlement[] {
+  const open = balances.map((b, order) => ({ ...b, order }));
+  const largest = (sign: 1 | -1) =>
+    open
+      .filter((b) => Math.sign(b.balance) === sign)
+      .sort((x, y) => sign * (y.balance - x.balance) || x.order - y.order)[0];
+
+  const out: SuggestedSettlement[] = [];
+  for (;;) {
+    const creditor = largest(1);
+    const debtor = largest(-1);
+    if (!creditor || !debtor) return out;
+    const amount = Math.min(creditor.balance, -debtor.balance);
+    out.push({ fromId: debtor.memberId, toId: creditor.memberId, amount });
+    creditor.balance -= amount;
+    debtor.balance += amount;
+  }
 }
 
 // 32-bit FNV-1a over the id's UTF-16 code units (ids are ASCII, so these are its bytes).
