@@ -119,3 +119,26 @@ describe("balances", () => {
     ]);
   });
 });
+
+describe("suggested settlements", () => {
+  it("have every member who owes pay the member who is owed, earlier-created first on a tie", () => {
+    const { suggestedSettlements } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }],
+      expenses: [
+        {
+          id: "dinner",
+          amount: 9000,
+          payerId: "ana",
+          participantIds: ["ana", "ben", "cy"],
+        },
+      ],
+      settlements: [],
+    });
+
+    // Balances: ana +6000, ben -3000, cy -3000.
+    expect(suggestedSettlements).toEqual([
+      { fromId: "ben", toId: "ana", amount: 3000 },
+      { fromId: "cy", toId: "ana", amount: 3000 },
+    ]);
+  });
+});

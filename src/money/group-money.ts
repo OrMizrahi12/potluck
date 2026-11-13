@@ -13,9 +13,16 @@ export type Share = { memberId: string; share: number; extra: 0 | 1 };
 
 export type Balance = { memberId: string; balance: number };
 
+export type SuggestedSettlement = {
+  fromId: string;
+  toId: string;
+  amount: number;
+};
+
 export type GroupMoney = {
   shares: Map<string, Share[]>;
   balances: Balance[];
+  suggestedSettlements: SuggestedSettlement[];
 };
 
 export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
@@ -57,7 +64,18 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     balance: net.get(m.id) ?? 0,
   }));
 
-  return { shares, balances };
+  const creditor = balances.reduce((best, b) =>
+    b.balance > best.balance ? b : best
+  );
+  const suggestedSettlements = balances
+    .filter((b) => b.balance < 0)
+    .map((b) => ({
+      fromId: b.memberId,
+      toId: creditor.memberId,
+      amount: -b.balance,
+    }));
+
+  return { shares, balances, suggestedSettlements };
 }
 
 // 32-bit FNV-1a over the id's UTF-16 code units (ids are ASCII, so these are its bytes).
