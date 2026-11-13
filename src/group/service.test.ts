@@ -28,7 +28,7 @@ describe("create group", () => {
   });
 });
 
-const trip = {
+const lisbonGroup = {
   name: "Lisbon trip",
   currency: "EUR",
   memberNames: ["Ana", "Ben"],
@@ -44,7 +44,7 @@ describe("create group refusals", () => {
   ])("refuses duplicate member names: %s", async (_, memberNames) => {
     const db = await createTestDb();
 
-    expect(await createGroup(db, { ...trip, memberNames })).toEqual({
+    expect(await createGroup(db, { ...lisbonGroup, memberNames })).toEqual({
       ok: false,
       reason: "member-name-duplicate",
     });
@@ -53,7 +53,7 @@ describe("create group refusals", () => {
   it("refuses a group with no members", async () => {
     const db = await createTestDb();
 
-    expect(await createGroup(db, { ...trip, memberNames: [] })).toEqual({
+    expect(await createGroup(db, { ...lisbonGroup, memberNames: [] })).toEqual({
       ok: false,
       reason: "members-missing",
     });
@@ -63,7 +63,7 @@ describe("create group refusals", () => {
     const db = await createTestDb();
 
     expect(
-      await createGroup(db, { ...trip, memberNames: ["Ana", "   "] })
+      await createGroup(db, { ...lisbonGroup, memberNames: ["Ana", "   "] })
     ).toEqual({
       ok: false,
       reason: "member-name-missing",
@@ -73,7 +73,7 @@ describe("create group refusals", () => {
   it("refuses a blank group name", async () => {
     const db = await createTestDb();
 
-    expect(await createGroup(db, { ...trip, name: "  " })).toEqual({
+    expect(await createGroup(db, { ...lisbonGroup, name: "  " })).toEqual({
       ok: false,
       reason: "group-name-missing",
     });
@@ -82,18 +82,21 @@ describe("create group refusals", () => {
   it("caps group names at 100 characters and member names at 50", async () => {
     const db = await createTestDb();
 
-    expect((await createGroup(db, { ...trip, name: "x".repeat(100) })).ok).toBe(
-      true
-    );
-    expect(await createGroup(db, { ...trip, name: "x".repeat(101) })).toEqual({
+    expect(
+      (await createGroup(db, { ...lisbonGroup, name: "x".repeat(100) })).ok
+    ).toBe(true);
+    expect(
+      await createGroup(db, { ...lisbonGroup, name: "x".repeat(101) })
+    ).toEqual({
       ok: false,
       reason: "group-name-too-long",
     });
     expect(
-      (await createGroup(db, { ...trip, memberNames: ["y".repeat(50)] })).ok
+      (await createGroup(db, { ...lisbonGroup, memberNames: ["y".repeat(50)] }))
+        .ok
     ).toBe(true);
     expect(
-      await createGroup(db, { ...trip, memberNames: ["y".repeat(51)] })
+      await createGroup(db, { ...lisbonGroup, memberNames: ["y".repeat(51)] })
     ).toEqual({
       ok: false,
       reason: "member-name-too-long",
@@ -105,9 +108,14 @@ describe("create group refusals", () => {
     const names = (n: number) =>
       Array.from({ length: n }, (_, i) => `Member ${i + 1}`);
 
-    const fifty = await createGroup(db, { ...trip, memberNames: names(50) });
+    const fifty = await createGroup(db, {
+      ...lisbonGroup,
+      memberNames: names(50),
+    });
     expect(fifty.ok && fifty.view.members).toHaveLength(50);
-    expect(await createGroup(db, { ...trip, memberNames: names(51) })).toEqual({
+    expect(
+      await createGroup(db, { ...lisbonGroup, memberNames: names(51) })
+    ).toEqual({
       ok: false,
       reason: "too-many-members",
     });
@@ -117,7 +125,10 @@ describe("create group refusals", () => {
     const db = await createTestDb();
 
     for (const currency of ["eur", "ZZZ", "EURO", ""]) {
-      expect(await createGroup(db, { ...trip, currency }), currency).toEqual({
+      expect(
+        await createGroup(db, { ...lisbonGroup, currency }),
+        currency
+      ).toEqual({
         ok: false,
         reason: "currency-unknown",
       });
@@ -143,7 +154,10 @@ describe("create group refusals", () => {
     ];
 
     for (const currency of na) {
-      expect(await createGroup(db, { ...trip, currency }), currency).toEqual({
+      expect(
+        await createGroup(db, { ...lisbonGroup, currency }),
+        currency
+      ).toEqual({
         ok: false,
         reason: "currency-unknown",
       });
@@ -158,7 +172,7 @@ describe("the group view", () => {
     const expected = { JPY: 0, EUR: 2, HUF: 2, IQD: 3, BHD: 3, CLF: 4 };
 
     for (const [currency, minorUnit] of Object.entries(expected)) {
-      const result = await createGroup(db, { ...trip, currency });
+      const result = await createGroup(db, { ...lisbonGroup, currency });
       expect(result.ok && result.view.digits, currency).toBe(minorUnit);
     }
   });
@@ -167,7 +181,7 @@ describe("the group view", () => {
     const db = await createTestDb();
 
     const result = await createGroup(db, {
-      ...trip,
+      ...lisbonGroup,
       name: "  Flat 4B ",
       memberNames: [" Ana", "Ben  "],
     });
@@ -194,7 +208,7 @@ describe("the group view", () => {
       "Oz",
     ];
 
-    const result = await createGroup(db, { ...trip, memberNames });
+    const result = await createGroup(db, { ...lisbonGroup, memberNames });
     if (!result.ok) throw new Error(result.reason);
 
     expect(
@@ -211,7 +225,7 @@ describe("the group link", () => {
 
     const tokens = new Set<string>();
     for (let i = 0; i < 20; i++) {
-      const result = await createGroup(db, trip);
+      const result = await createGroup(db, lisbonGroup);
       if (!result.ok) throw new Error(result.reason);
       expect(result.view.linkToken).toMatch(/^[A-Za-z0-9_-]{22,}$/); // 22 base64url characters hold 128 bits
       tokens.add(result.view.linkToken);
@@ -222,7 +236,7 @@ describe("the group link", () => {
 
   it("opens nothing when no group has that token", async () => {
     const db = await createTestDb();
-    const result = await createGroup(db, trip);
+    const result = await createGroup(db, lisbonGroup);
     if (!result.ok) throw new Error(result.reason);
 
     expect(await readGroupView(db, "A".repeat(22))).toBeUndefined();
