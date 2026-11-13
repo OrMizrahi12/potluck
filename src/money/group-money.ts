@@ -48,6 +48,10 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     add(expense.payerId, expense.amount);
     for (const s of shares.get(expense.id) ?? []) add(s.memberId, -s.share);
   }
+  for (const settlement of input.settlements) {
+    add(settlement.fromId, settlement.amount);
+    add(settlement.toId, -settlement.amount);
+  }
   const balances = input.members.map((m) => ({
     memberId: m.id,
     balance: net.get(m.id) ?? 0,

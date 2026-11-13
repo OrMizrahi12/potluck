@@ -93,4 +93,29 @@ describe("balances", () => {
       { memberId: "dee", balance: 0 },
     ]);
   });
+
+  it("add settlements made and subtract settlements received", () => {
+    const { balances } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }],
+      expenses: [
+        {
+          id: "dinner",
+          amount: 9000,
+          payerId: "ana",
+          participantIds: ["ana", "ben", "cy"],
+        },
+      ],
+      settlements: [
+        { fromId: "ben", toId: "ana", amount: 3000 },
+        { fromId: "cy", toId: "ana", amount: 5000 },
+      ],
+    });
+
+    // Before settlements: ana +6000, ben -3000, cy -3000.
+    expect(balances).toEqual([
+      { memberId: "ana", balance: -2000 },
+      { memberId: "ben", balance: 0 },
+      { memberId: "cy", balance: 2000 },
+    ]);
+  });
 });
