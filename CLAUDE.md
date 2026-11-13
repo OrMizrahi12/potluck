@@ -15,3 +15,5 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 ### Landing a change
 
 One worktree, one PR, auto-merge on green; migrations wait for a human. Read `docs/agents/landing.md` before opening a PR or merging.
+
+**Dev server logs**: the developer runs `npm run dev` in their own terminal, and everything it prints goes to `.data/logs/dev-latest.log` (rewritten each run); read it when debugging the running app.
