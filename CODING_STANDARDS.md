@@ -4,7 +4,9 @@ Rules this codebase follows that no tool checks. Prettier, ESLint and `tsc` enfo
 
 ## Words
 
-- Name things with the terms in `GLOSSARY.md`, in identifiers, comments and test names alike. Never use a word from an _Avoid_ list, even where the spec or an outside source uses it: `balanceById`, not `net`.
+`npm run lint` rejects declared names and test names that use a word from a `GLOSSARY.md` _Avoid_ list. The rules below cover what it can't see.
+
+- Comments use the glossary's terms too, even when they paraphrase the spec or an outside source that uses an avoided word.
 - When the glossary has no term for something, write a plain phrase from glossary words rather than borrowing a synonym: "the member who owes most", not "debtor".
 
 ## Money
