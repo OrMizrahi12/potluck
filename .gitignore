@@ -13,6 +13,9 @@ to-questionnaire-first-group.md
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
 
 # next.js
 /.next/

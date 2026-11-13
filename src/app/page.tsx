@@ -1,21 +1,15 @@
-import { connection } from "next/server";
-import { Suspense } from "react";
-import { getDb } from "@/db/client";
-import { readGreeting } from "@/db/greeting";
-
-async function Greeting() {
-  await connection(); // read the database per request, never at build time
-  const greeting = await readGreeting(getDb());
-  return <p>{greeting ?? "Potluck reached its database, which has no seed data."}</p>;
-}
+import { CreateGroupForm } from "./create-group-form";
 
 export default function Home() {
   return (
     <main>
       <h1>Potluck</h1>
-      <Suspense fallback={<p>Connecting…</p>}>
-        <Greeting />
-      </Suspense>
+      <p>
+        Track what a group spends together. No sign-up: create a group and share
+        its link.
+      </p>
+      <h2>Create a group</h2>
+      <CreateGroupForm />
     </main>
   );
 }
