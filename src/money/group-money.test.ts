@@ -118,6 +118,33 @@ describe("balances", () => {
       { memberId: "cy", balance: 2000 },
     ]);
   });
+
+  it("credit a payer who isn't a participant with the whole amount and give them no share", () => {
+    const { shares, balances } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }, { id: "dee" }],
+      expenses: [
+        {
+          id: "dinner",
+          amount: 9000,
+          payerId: "dee",
+          participantIds: ["ana", "ben", "cy"],
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(shares.get("dinner")?.map((s) => s.memberId)).toEqual([
+      "ana",
+      "ben",
+      "cy",
+    ]);
+    expect(balances).toEqual([
+      { memberId: "ana", balance: -3000 },
+      { memberId: "ben", balance: -3000 },
+      { memberId: "cy", balance: -3000 },
+      { memberId: "dee", balance: 9000 },
+    ]);
+  });
 });
 
 describe("suggested settlements", () => {
