@@ -25,6 +25,16 @@ export type GroupMoney = {
   suggestedSettlements: SuggestedSettlement[];
 };
 
+/**
+ * Preconditions the group service guarantees before the engine sees them
+ * (spec #1's comment on the money core's seam):
+ * - every expense has at least one participant;
+ * - every amount is a positive integer in minor units, and an expense's amount
+ *   is at least its number of participants;
+ * - every payer, participant and settlement id is a member's id;
+ * - every expense id is ASCII, so hashing its UTF-16 code units is hashing its
+ *   bytes, as the odd-cent rule's FNV-1a requires.
+ */
 export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
   const shares = new Map<string, Share[]>();
   const balanceById = new Map(input.members.map((m) => [m.id, 0]));
@@ -88,7 +98,8 @@ function suggest(balances: Balance[]): SuggestedSettlement[] {
   }
 }
 
-// 32-bit FNV-1a over the id's UTF-16 code units (ids are ASCII, so these are its bytes).
+// 32-bit FNV-1a over the id's UTF-16 code units, which are its bytes because
+// expense ids are ASCII (see computeGroupMoney's preconditions).
 function fnv1a32(text: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
