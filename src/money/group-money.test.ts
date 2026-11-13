@@ -145,6 +145,30 @@ describe("balances", () => {
       { memberId: "dee", balance: 9000 },
     ]);
   });
+
+  // Odd-cent expenses, a payer who isn't a participant, and an overpayment that crosses zero.
+  it("sum to zero", () => {
+    const { balances } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }, { id: "dee" }],
+      expenses: [
+        {
+          id: "a",
+          amount: 100,
+          payerId: "ana",
+          participantIds: ["ana", "ben", "cy"],
+        },
+        {
+          id: "abc",
+          amount: 101,
+          payerId: "dee",
+          participantIds: ["ana", "ben", "cy"],
+        },
+      ],
+      settlements: [{ fromId: "ben", toId: "ana", amount: 500 }],
+    });
+
+    expect(balances.reduce((sum, b) => sum + b.balance, 0)).toBe(0);
+  });
 });
 
 describe("suggested settlements", () => {
