@@ -8,6 +8,12 @@ Rules this codebase follows that no tool checks. Prettier, ESLint and `tsc` enfo
 
 - Comments use the glossary's terms too, even when they paraphrase the spec or an outside source that uses an avoided word.
 - When the glossary has no term for something, write a plain phrase from glossary words rather than borrowing a synonym: "the member who owes most", not "debtor".
+- Names taken from the spec's own code keep the spec's spelling, so code and spec read side by side: `share`, `extra`, `n`, `q`, `r`. The glossary still wins: the spec's `debt` becomes a glossary phrase.
+
+## Types
+
+- Ids are plain `string` and amounts plain `number`. The group service guarantees what they hold, and the engine lists that among its preconditions.
+- A suggested settlement keeps its own type, even where its fields match a recorded settlement's: one is a proposal, the other a record.
 
 ## Money
 
