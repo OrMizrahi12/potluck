@@ -50,6 +50,8 @@ Done when you have seen every screenshot of the final run and each shows what it
 
 Copy the screenshots that show the change, desktop and phone, to `docs/evidence/issue-<N>/<project>-<n>-<state>.png` (the branch name stands in for `issue-<N>` when there's no ticket). Commit them on their own: `Add screenshots of #<N>'s browser test for the PR`.
 
+Done when `git show --stat HEAD` lists only files under `docs/evidence/issue-<N>/`, with both desktop and phone among them, each one a screenshot you looked at in step 4.
+
 ## 6. Hand the evidence to the PR
 
 The Evidence section of the PR body (written with `/pr`) embeds the images by the evidence commit's SHA, so they outlive the branch. The URLs resolve once that commit is pushed.
@@ -61,6 +63,13 @@ The Evidence section of the PR body (written with `/pr`) embeds the images by th
 ```
 
 Beside the table: the test's pass lines, one line on how it went red, and under **Not covered** what the walk can't reach. Headless Chromium has no share sheet and isn't a real phone, and CI runs no browser tests until #12 closes.
+
+Done when the PR body holds the table, the pass lines, the red line and **Not covered**, and every image in it answers `200`:
+
+```sh
+gh pr view --json body --jq .body | grep -o 'https://raw.githubusercontent.com/[^"]*' |
+  xargs -n1 curl -s -o /dev/null -w '%{http_code} %{url}\n'
+```
 
 ## 7. Stop your server
 
