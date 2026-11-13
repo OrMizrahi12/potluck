@@ -1,9 +1,95 @@
 :root {
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
+  line-height: 1.4;
 }
 
 body {
   margin: 0;
   padding: 1rem;
+}
+
+main {
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+/* 16px or more stops phones zooming into focused fields. */
+input,
+select,
+button {
+  font: inherit;
+  font-size: max(1rem, 16px);
+  min-height: 2.75rem;
+  box-sizing: border-box;
+}
+
+input,
+select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+}
+
+fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.row > input {
+  flex: 1;
+}
+
+.error:empty,
+[role="status"]:empty {
+  display: none;
+}
+
+.error {
+  color: #c62828;
+}
+
+.members {
+  padding-left: 1.25rem;
+}
+
+.members li {
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  overflow-wrap: anywhere;
 }
