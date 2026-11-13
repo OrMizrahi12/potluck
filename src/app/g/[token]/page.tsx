@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { findCurrency } from "@/currency/currencies";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
-import { ShareLink } from "./share-link";
+import { GroupLink } from "./group-link";
 
 export const metadata: Metadata = {
   title: "Group · Potluck",
@@ -27,7 +27,7 @@ async function Group({ token }: { token: string }) {
         {currency && ` · ${currency.name}`}
       </p>
 
-      <ShareLink />
+      <GroupLink />
 
       <h2>Members</h2>
       <ul className="members">

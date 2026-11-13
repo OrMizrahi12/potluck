@@ -40,6 +40,7 @@ describe("create group refusals", () => {
     ["different case", ["Ana", "ANA"]],
     ["surrounding spaces", ["Ana", "  ana "]],
     ["different Unicode composition", ["Chloé", "Chloé"]],
+    ["Turkish dotted capital I", ["İvo", "ivo"]],
   ])("refuses duplicate member names: %s", async (_, memberNames) => {
     const db = await createTestDb();
 

@@ -7,12 +7,13 @@ const noSubscription = () => () => {};
 /**
  * The group's link with a share button (the phone's share sheet, where the
  * browser has one) and a copy button. If the clipboard is blocked, the link
- * is selected so it can be copied by hand.
+ * is selected so it can be copied by hand. The link is the bare page
+ * address, without whatever query or fragment this visit happened to carry.
  */
-export function ShareLink() {
+export function GroupLink() {
   const url = useSyncExternalStore(
     noSubscription,
-    () => window.location.href,
+    () => window.location.origin + window.location.pathname,
     () => ""
   );
   const canShare = useSyncExternalStore(

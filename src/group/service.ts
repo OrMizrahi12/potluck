@@ -60,21 +60,28 @@ export async function createGroup(
   }
 
   const linkToken = newLinkToken();
-  await db.transaction(async (tx) => {
-    const [group] = await tx
-      .insert(groups)
-      .values({ linkToken, name, currency: input.currency })
-      .returning({ id: groups.id });
-    await tx
-      .insert(members)
-      .values(
+  try {
+    await db.transaction(async (tx) => {
+      const [group] = await tx
+        .insert(groups)
+        .values({ linkToken, name, currency: input.currency })
+        .returning({ id: groups.id });
+      await tx.insert(members).values(
         memberNames.map((memberName, position) => ({
           groupId: group.id,
           name: memberName,
           position,
         }))
       );
-  });
+    });
+  } catch (error) {
+    // The database's name index folds case by its own collation; if it ever
+    // catches a duplicate the check above passed, it's still a refusal.
+    if (violates(error, "members_group_name_unique")) {
+      return refuse("member-name-duplicate");
+    }
+    throw error;
+  }
 
   const view = await readGroupView(db, linkToken);
   if (!view) throw new Error("A group just created could not be read back.");
@@ -123,6 +130,14 @@ function refuse<Reason extends string>(
   reason: Reason
 ): { ok: false; reason: Reason } {
   return { ok: false, reason };
+}
+
+/** Whether a write failed on the named unique constraint or index. Drizzle wraps the driver's error. */
+function violates(error: unknown, constraint: string): boolean {
+  for (let e = error; e instanceof Error; e = e.cause) {
+    if ("constraint" in e && e.constraint === constraint) return true;
+  }
+  return false;
 }
 
 /** Names are stored trimmed and in Unicode NFC, so "é" typed two ways is one name. */

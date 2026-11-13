@@ -11,8 +11,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-// Walking-skeleton table: one row, written by the first migration and read by
-// the home page, to prove the app reaches a migrated database.
+// Walking-skeleton table: one row, written by the seed. The home page no
+// longer reads it; it stays because migrations may only add things.
 export const appInfo = pgTable(
   "app_info",
   {
