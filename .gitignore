@@ -13,6 +13,9 @@ to-questionnaire-first-group.md
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
 
 # next.js
 /.next/
@@ -41,6 +44,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local runtime data, e.g. dev server logs
+/.data/
 
 # worktrees made by Claude Code sessions
 .claude/worktrees/
