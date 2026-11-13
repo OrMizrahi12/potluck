@@ -35,7 +35,7 @@ The portion of one expense that one participant is responsible for.
 _Avoid_: Split (as a noun), portion, cut
 
 **Balance**:
-One member's net position in the group: positive when the group owes them, negative when they owe the group.
+One member's position in the group: positive when the group owes them, negative when they owe the group.
 _Avoid_: Debt, net, total
 
 **Settlement**:
