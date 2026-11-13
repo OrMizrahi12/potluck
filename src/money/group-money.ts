@@ -65,9 +65,10 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
   return { shares, balances, suggestedSettlements: suggest(balances) };
 }
 
-// Greedy matching: repeatedly match the largest debtor with the largest
-// creditor for the smaller of the two amounts. Ties go to the earlier-created
-// member (balances arrive in creation order), so the result is deterministic.
+// Greedy matching: repeatedly have the member who owes most pay the member who
+// is owed most, for the smaller of the two amounts. Ties go to the
+// earlier-created member (balances arrive in creation order), so the result is
+// deterministic.
 function suggest(balances: Balance[]): SuggestedSettlement[] {
   const open = balances.map((b, order) => ({ ...b, order }));
   const largest = (sign: 1 | -1) =>
@@ -77,13 +78,13 @@ function suggest(balances: Balance[]): SuggestedSettlement[] {
 
   const out: SuggestedSettlement[] = [];
   for (;;) {
-    const creditor = largest(1);
-    const debtor = largest(-1);
-    if (!creditor || !debtor) return out;
-    const amount = Math.min(creditor.balance, -debtor.balance);
-    out.push({ fromId: debtor.memberId, toId: creditor.memberId, amount });
-    creditor.balance -= amount;
-    debtor.balance += amount;
+    const owedMost = largest(1);
+    const owesMost = largest(-1);
+    if (!owedMost || !owesMost) return out;
+    const amount = Math.min(owedMost.balance, -owesMost.balance);
+    out.push({ fromId: owesMost.memberId, toId: owedMost.memberId, amount });
+    owedMost.balance -= amount;
+    owesMost.balance += amount;
   }
 }
 
