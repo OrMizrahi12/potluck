@@ -69,3 +69,28 @@ describe("an expense's shares", () => {
     ]);
   });
 });
+
+describe("balances", () => {
+  // Shares of "a" are 33/34/33 (see the leftover-unit test above).
+  it("are what each member paid for expenses minus their shares, in creation order", () => {
+    const { balances } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }, { id: "dee" }],
+      expenses: [
+        {
+          id: "a",
+          amount: 100,
+          payerId: "ana",
+          participantIds: ["ana", "ben", "cy"],
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(balances).toEqual([
+      { memberId: "ana", balance: 67 },
+      { memberId: "ben", balance: -34 },
+      { memberId: "cy", balance: -33 },
+      { memberId: "dee", balance: 0 },
+    ]);
+  });
+});

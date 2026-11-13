@@ -11,8 +11,11 @@ export type GroupMoneyInput = {
 
 export type Share = { memberId: string; share: number; extra: 0 | 1 };
 
+export type Balance = { memberId: string; balance: number };
+
 export type GroupMoney = {
   shares: Map<string, Share[]>;
+  balances: Balance[];
 };
 
 export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
@@ -38,7 +41,19 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     }
     shares.set(expense.id, expenseShares);
   }
-  return { shares };
+  const net = new Map(input.members.map((m) => [m.id, 0]));
+  const add = (memberId: string, amount: number) =>
+    net.set(memberId, (net.get(memberId) ?? 0) + amount);
+  for (const expense of input.expenses) {
+    add(expense.payerId, expense.amount);
+    for (const s of shares.get(expense.id) ?? []) add(s.memberId, -s.share);
+  }
+  const balances = input.members.map((m) => ({
+    memberId: m.id,
+    balance: net.get(m.id) ?? 0,
+  }));
+
+  return { shares, balances };
 }
 
 // 32-bit FNV-1a over the id's UTF-16 code units (ids are ASCII, so these are its bytes).
