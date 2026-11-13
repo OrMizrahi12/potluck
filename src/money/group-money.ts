@@ -27,6 +27,9 @@ export type GroupMoney = {
 
 export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
   const shares = new Map<string, Share[]>();
+  const balanceById = new Map(input.members.map((m) => [m.id, 0]));
+  const add = (memberId: string, amount: number) =>
+    balanceById.set(memberId, (balanceById.get(memberId) ?? 0) + amount);
   for (const expense of input.expenses) {
     const participating = new Set(expense.participantIds);
     const participantIds = input.members
@@ -47,13 +50,8 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
       s.extra = 1;
     }
     shares.set(expense.id, expenseShares);
-  }
-  const balanceById = new Map(input.members.map((m) => [m.id, 0]));
-  const add = (memberId: string, amount: number) =>
-    balanceById.set(memberId, (balanceById.get(memberId) ?? 0) + amount);
-  for (const expense of input.expenses) {
     add(expense.payerId, expense.amount);
-    for (const s of shares.get(expense.id) ?? []) add(s.memberId, -s.share);
+    for (const s of expenseShares) add(s.memberId, -s.share);
   }
   for (const settlement of input.settlements) {
     add(settlement.fromId, settlement.amount);
