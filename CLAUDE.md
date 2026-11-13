@@ -12,6 +12,10 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Coding standards
+
+Rules no tool checks: glossary words in code, money in minor units, preconditions, determinism, tests and commits. Read `CODING_STANDARDS.md` before writing code.
+
 ### Landing a change
 
 One worktree, one PR, auto-merge on green; migrations wait for a human. Read `docs/agents/landing.md` before opening a PR or merging.
