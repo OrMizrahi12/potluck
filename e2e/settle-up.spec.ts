@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   createGroup,
   expectNoSidewaysScroll,
+  sayWhoYouAre,
   screenshot,
   watchForErrors,
 } from "./helpers";
@@ -36,6 +37,7 @@ test("record the suggested settlements and reach settled up", async ({
     currency: "JPY",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(page, "Ana");
   await expect(page.getByText("Everyone is settled up.")).toBeVisible();
 
   await test.step("an expense brings suggested settlements", async () => {
