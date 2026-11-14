@@ -419,6 +419,35 @@ export async function renameMember(
   return { ok: true, view: await readBack(db, linkToken) };
 }
 
+export type SetMemberActiveRefusal = MemberRefRefusal;
+
+/**
+ * Makes a member inactive or active again. Inactive only means not
+ * pre-selected as a participant in new expenses: an inactive member keeps
+ * their balance, stays in suggested settlements, and can still pay, take
+ * part in expenses and record settlements.
+ */
+export async function setMemberActive(
+  db: Db,
+  linkToken: string,
+  input: MemberRef & { active: boolean }
+): Promise<CommandResult<SetMemberActiveRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const found = await lockMember(tx, linkToken, input);
+    if (typeof found === "string") return found;
+    await tx
+      .update(members)
+      .set({ active: input.active, version: sql`${members.version} + 1` })
+      .where(eq(members.id, found.id));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
 /**
  * The member a command names, with the group locked (see lockGroup), or why
  * the command can't act on them.

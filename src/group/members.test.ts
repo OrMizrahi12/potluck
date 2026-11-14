@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
-import { addMember, createGroup, readGroupView, renameMember } from "./service";
+import {
+  addExpense,
+  addMember,
+  addSettlement,
+  createGroup,
+  readGroupView,
+  renameMember,
+  setMemberActive,
+} from "./service";
 
 /** A fresh group with members Ana, Ben and Chloé. */
 async function lisbonGroup(db: Db) {
@@ -171,5 +179,113 @@ describe("rename member refusals", () => {
         name: "Bo",
       })
     ).toEqual({ ok: false, reason: "group-unknown" });
+  });
+});
+
+describe("inactive member", () => {
+  it("can be made inactive and active again, moving their version on each time", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+
+    const inactive = await setMemberActive(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      active: false,
+    });
+    if (!inactive.ok) throw new Error(`refused: ${inactive.reason}`);
+    expect(inactive.view.members[1]).toMatchObject({
+      active: false,
+      version: 2,
+    });
+
+    const active = await setMemberActive(db, linkToken, {
+      memberId: ben,
+      version: 2,
+      active: true,
+    });
+    if (!active.ok) throw new Error(`refused: ${active.reason}`);
+    expect(active.view.members[1]).toMatchObject({ active: true, version: 3 });
+  });
+
+  // Ana paid 30.00 for all three: Ana +20.00, Ben −10.00, Chloé −10.00.
+  // Ben leaves owing 10.00; he still pays Ana in the suggested settlements.
+  it("keeps their balance and stays in the suggested settlements", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db);
+    await addExpense(db, linkToken, {
+      description: "Dinner",
+      amount: "30.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben, chloe],
+    });
+
+    const result = await setMemberActive(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      active: false,
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => [m.name, m.balance])).toEqual([
+      ["Ana", 2000],
+      ["Ben", -1000],
+      ["Chloé", -1000],
+    ]);
+    expect(result.view.suggestedSettlements).toEqual([
+      { fromId: ben, toId: ana, amount: 1000 },
+      { fromId: chloe, toId: ana, amount: 1000 },
+    ]);
+  });
+
+  // Ben, inactive, pays 9.00 for Ana and himself: Ben +4.50, Ana −4.50.
+  // Then he records paying Ana 1.00: Ben +5.50, Ana −5.50.
+  it("can still pay, take part in an expense and record a settlement", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben } = await lisbonGroup(db);
+    await setMemberActive(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      active: false,
+    });
+
+    const expense = await addExpense(db, linkToken, {
+      description: "Late receipt",
+      amount: "9.00",
+      date: "2026-11-14",
+      payerId: ben,
+      participantIds: [ana, ben],
+    });
+    const settlement = await addSettlement(db, linkToken, {
+      fromId: ben,
+      toId: ana,
+      amount: "1.00",
+      date: "2026-11-15",
+    });
+
+    expect(expense.ok).toBe(true);
+    if (!settlement.ok) throw new Error(`refused: ${settlement.reason}`);
+    expect(settlement.view.members.map((m) => m.balance)).toEqual([
+      -550, 550, 0,
+    ]);
+  });
+
+  it("refuses a stale version", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+    await renameMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      name: "Bo",
+    });
+
+    expect(
+      await setMemberActive(db, linkToken, {
+        memberId: ben,
+        version: 1,
+        active: false,
+      })
+    ).toEqual({ ok: false, reason: "stale-version" });
+    expect((await readGroupView(db, linkToken))?.members[1].active).toBe(true);
   });
 });
