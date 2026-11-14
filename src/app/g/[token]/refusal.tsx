@@ -25,4 +25,5 @@ export function Refusal({
 }
 
 /** What a member sees when someone else changed an entry since they opened it. */
-export const STALE_MESSAGE = "This changed, reload the page to see the latest.";
+export const STALE_MESSAGE =
+  "This changed since you opened the page. Reload to see the latest, then try again.";

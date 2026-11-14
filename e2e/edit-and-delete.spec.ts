@@ -209,7 +209,7 @@ test("a save from a version someone else changed says it changed and keeps their
     await form.getByLabel("Description").fill("Dinner and drinks");
     await form.getByRole("button", { name: "Save changes" }).click();
     await expect(form.getByRole("alert")).toHaveText(
-      "This changed, reload the page to see the latest. Reload"
+      "This changed since you opened the page. Reload to see the latest, then try again. Reload"
     );
     await screenshot(chloe, testInfo, "4-this-changed-reload");
   });
@@ -221,7 +221,7 @@ test("a save from a version someone else changed says it changed and keeps their
       .getByRole("button", { name: "Yes, delete the expense" })
       .click();
     await expect(remove.getByRole("alert")).toHaveText(
-      "This changed, reload the page to see the latest. Reload"
+      "This changed since you opened the page. Reload to see the latest, then try again. Reload"
     );
   });
 
