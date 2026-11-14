@@ -88,8 +88,13 @@ export async function createGroup(
   return { ok: true, view };
 }
 
-/** Whether a group has this link: one indexed lookup, for checks that run before a page renders. */
+/**
+ * Whether a group has this link: one indexed lookup, for checks that run before
+ * a page renders. A link newLinkToken() couldn't have made is answered without
+ * the database, so guessed links don't wake it.
+ */
 export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return false;
   const [group] = await db
     .select({ id: groups.id })
     .from(groups)
@@ -163,6 +168,9 @@ function cleanName(name: string): string {
 function nameKey(cleanedName: string): string {
   return cleanedName.toLowerCase();
 }
+
+/** What newLinkToken() makes: 16 bytes in unpadded base64url. */
+const LINK_TOKEN_SHAPE = /^[A-Za-z0-9_-]{22}$/;
 
 /** 128 random bits, URL-safe: the group's only credential. */
 function newLinkToken(): string {
