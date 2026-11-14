@@ -38,4 +38,19 @@ describe("the seeded flat share", () => {
       ["Dee", -61885],
     ]);
   });
+
+  // Ben bought Dee's 45.00 ticket: Ben is credited the whole amount and,
+  // not being a participant, has no share of it.
+  it("has an expense whose payer isn't a participant", async () => {
+    const view = await seededGroup(SEED_LINKS.flatShare);
+    const names = new Map(view.members.map((m) => [m.id, m.name]));
+
+    const ticket = view.expenses.find(
+      (e) => e.description === "Concert ticket for Dee"
+    );
+    expect(ticket && names.get(ticket.payerId)).toBe("Ben");
+    expect(ticket?.shares.map((s) => [names.get(s.memberId), s.share])).toEqual(
+      [["Dee", 4500]]
+    );
+  });
 });
