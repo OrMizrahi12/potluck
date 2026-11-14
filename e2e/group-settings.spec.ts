@@ -46,16 +46,18 @@ test("manage members and currency, make a member inactive, then delete the group
   });
 
   await test.step("add, rename and delete a member", async () => {
+    const addMember = page.getByRole("form", { name: "Add a member" });
+    await page.getByLabel("New member").fill(" ana ");
+    await page.getByRole("button", { name: "Add member" }).click();
+    await expect(addMember.getByRole("alert")).toHaveText(
+      "Another member already has that name."
+    );
+
     await page.getByLabel("New member").fill("Dan");
     await page.getByRole("button", { name: "Add member" }).click();
     await expect(member(page, "Dan")).toBeVisible();
     await expect(page.getByLabel("New member")).toHaveValue("");
-
-    await page.getByLabel("New member").fill(" ana ");
-    await page.getByRole("button", { name: "Add member" }).click();
-    await expect(
-      page.getByRole("form", { name: "Add a member" }).getByRole("alert")
-    ).toHaveText("Another member already has that name.");
+    await expect(addMember.getByRole("alert")).toBeHidden();
 
     await member(page, "Dan").getByLabel("Name").fill("Dave");
     await member(page, "Dan").getByRole("button", { name: "Rename" }).click();
