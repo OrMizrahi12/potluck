@@ -6,6 +6,7 @@ import {
   addExpense,
   addSettlement,
   createGroup,
+  deleteSettlement,
   readGroupView,
 } from "./service";
 
@@ -429,5 +430,70 @@ describe("suggested settlements", () => {
     expect(
       afterChloe.ok && afterChloe.view.members.map((m) => m.balance)
     ).toEqual([0, 0, 0]);
+  });
+
+  // The logic prototype's "overpayment and loans". Ana paid 80.00 for Ana and
+  // Ben: Ana +40.00, Ben −40.00.
+  // Ben pays Ana 100.00, 60.00 too much: Ana −60.00, Ben +60.00, so Ana now
+  //   pays Ben.
+  // Cai lends Dee 50.00: Cai +50.00, Dee −50.00. Ana pays Ben 25.00 back:
+  //   Ana −35.00, Ben +35.00. Dee owes most, so Dee pays Cai first.
+  // Deleting the overpayment: Ana +40.00 + 25.00 = +65.00, Ben −65.00.
+  it("flip direction after an overpayment, and flip back when it's deleted", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Flat",
+      currency: "USD",
+      memberNames: ["Ana", "Ben", "Cai", "Dee"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+    const { linkToken } = created.view;
+    const [ana, ben, cai, dee] = created.view.members.map((m) => m.id);
+    await addExpense(db, linkToken, {
+      description: "Concert",
+      amount: "80.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+    });
+
+    const overpaid = await addSettlement(db, linkToken, {
+      fromId: ben,
+      toId: ana,
+      amount: "100.00",
+      date: "2026-11-15",
+    });
+    await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: dee,
+      amount: "50.00",
+      date: "2026-11-16",
+    });
+    const paidBack = await addSettlement(db, linkToken, {
+      fromId: ana,
+      toId: ben,
+      amount: "25.00",
+      date: "2026-11-17",
+    });
+    if (!overpaid.ok) throw new Error(overpaid.reason);
+    const deleted = await deleteSettlement(db, linkToken, {
+      settlementId: overpaid.view.settlements[0].id,
+      version: 1,
+    });
+
+    expect(overpaid.view.suggestedSettlements).toEqual([
+      { fromId: ana, toId: ben, amount: 6000 },
+    ]);
+    expect(paidBack.ok && paidBack.view.suggestedSettlements).toEqual([
+      { fromId: dee, toId: cai, amount: 5000 },
+      { fromId: ana, toId: ben, amount: 3500 },
+    ]);
+    expect(deleted.ok && deleted.view.members.map((m) => m.balance)).toEqual([
+      6500, -6500, 5000, -5000,
+    ]);
+    expect(deleted.ok && deleted.view.suggestedSettlements).toEqual([
+      { fromId: ben, toId: ana, amount: 6500 },
+      { fromId: dee, toId: cai, amount: 5000 },
+    ]);
   });
 });
