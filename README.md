@@ -15,17 +15,20 @@ npm run dev
 
 `GET /api/health` answers without touching the database.
 
+In a git worktree, run `npm run setup:worktree` instead: it installs, gives the worktree its own database (`potluck_<worktree name>`, migrated and seeded) and dev server port (3100 up), and keeps both in its `.env.local`. Claude Code copies `.env.local` in from the main checkout (`.worktreeinclude`).
+
 ## Commands
 
-| Command               | What it does                                                     |
-| --------------------- | ---------------------------------------------------------------- |
-| `npm run check`       | Everything CI runs: type-check, lint, dependency guard, tests    |
-| `npm run typecheck`   | TypeScript                                                       |
-| `npm run lint`        | ESLint                                                           |
-| `npm test`            | Service tests, each on a fresh PGlite (Postgres 18) database     |
-| `npm run db:generate` | Generate a SQL migration from `src/db/schema.ts` into `drizzle/` |
-| `npm run db:migrate`  | Apply migrations, holding a Postgres advisory lock               |
-| `npm run db:seed`     | Apply migrations and load the seed, the only source of data      |
+| Command                  | What it does                                                     |
+| ------------------------ | ---------------------------------------------------------------- |
+| `npm run check`          | Everything CI runs: type-check, lint, dependency guard, tests    |
+| `npm run typecheck`      | TypeScript                                                       |
+| `npm run lint`           | ESLint                                                           |
+| `npm test`               | Service tests, each on a fresh PGlite (Postgres 18) database     |
+| `npm run db:generate`    | Generate a SQL migration from `src/db/schema.ts` into `drizzle/` |
+| `npm run db:migrate`     | Apply migrations, holding a Postgres advisory lock               |
+| `npm run db:seed`        | Apply migrations and load the seed, the only source of data      |
+| `npm run setup:worktree` | Make a worktree ready: install, own database, own port           |
 
 ## Hosting
 

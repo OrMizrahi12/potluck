@@ -1,18 +1,33 @@
 // `npm run dev`: runs `next dev` and copies everything it prints, stdout and
 // stderr, to .data/logs/dev-latest.log, so agents can read what the developer's
 // own terminal shows. The terminal keeps its colours; the log is plain text.
-// Each run starts the log afresh.
+// Each run starts the log afresh. It serves on the PORT in .env.local, which a
+// worktree gets from `npm run setup:worktree`, else on 3000; --port overrides.
 import { spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { constants } from "node:os";
 import path from "node:path";
-import { stripVTControlCharacters } from "node:util";
+import { parseEnv, stripVTControlCharacters } from "node:util";
 
 const root = path.join(import.meta.dirname, "..");
 const logDir = path.join(root, ".data", "logs");
 mkdirSync(logDir, { recursive: true });
 const log = createWriteStream(path.join(logDir, "dev-latest.log"));
+
+const envFile = path.join(root, ".env.local");
+const port = existsSync(envFile)
+  ? parseEnv(readFileSync(envFile, "utf8")).PORT
+  : undefined;
+const env = {
+  ...process.env,
+  ...(port && !process.env.PORT && { PORT: port }),
+};
 
 const nextBin = createRequire(import.meta.url).resolve("next/dist/bin/next");
 const child = spawn(
@@ -22,9 +37,7 @@ const child = spawn(
     cwd: root,
     stdio: ["inherit", "pipe", "pipe"],
     // Next turns colour off when its output is a pipe; keep it for a terminal.
-    env: process.stdout.isTTY
-      ? { ...process.env, FORCE_COLOR: "1" }
-      : process.env,
+    env: process.stdout.isTTY ? { ...env, FORCE_COLOR: "1" } : env,
   }
 );
 
