@@ -47,9 +47,14 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         {currency && ` · ${currency.name}`}
       </p>
 
-      <Link className="button" href={`/g/${token}/expenses/new`}>
-        Add an expense
-      </Link>
+      <div className="actions">
+        <Link className="button" href={`/g/${token}/expenses/new`}>
+          Add an expense
+        </Link>
+        <Link className="button secondary" href={`/g/${token}/settlements/new`}>
+          Record a settlement
+        </Link>
+      </div>
 
       <h2 id="balances">Balances</h2>
       <ul className="balances" aria-labelledby="balances">
@@ -60,6 +65,32 @@ async function Group({ token, shown }: { token: string; shown: number }) {
           </li>
         ))}
       </ul>
+
+      <h2 id="suggested-settlements">Suggested settlements</h2>
+      {group.suggestedSettlements.length === 0 ? (
+        <p>Everyone is settled up.</p>
+      ) : (
+        <ul className="settlements" aria-labelledby="suggested-settlements">
+          {group.suggestedSettlements.map((s) => (
+            <li key={`${s.fromId}-${s.toId}`}>
+              <span>
+                <span className="name">{nameOf.get(s.fromId)}</span> pays{" "}
+                <span className="name">{nameOf.get(s.toId)}</span>{" "}
+                <span className="amount">{money(s.amount)}</span>
+              </span>{" "}
+              <Link
+                href={`/g/${token}/settlements/new?${new URLSearchParams({
+                  from: s.fromId,
+                  to: s.toId,
+                  amount: String(s.amount),
+                })}`}
+              >
+                Record this settlement
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h2 id="expenses">Expenses</h2>
       {group.expenses.length === 0 ? (
@@ -85,6 +116,24 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         >
           Show older expenses
         </Link>
+      )}
+
+      <h2 id="settlements">Settlements</h2>
+      {group.settlements.length === 0 ? (
+        <p>No settlements yet.</p>
+      ) : (
+        <ul className="settlements" aria-labelledby="settlements">
+          {group.settlements.map((s) => (
+            <li key={s.id}>
+              <span>
+                <span className="name">{nameOf.get(s.fromId)}</span> paid{" "}
+                <span className="name">{nameOf.get(s.toId)}</span>{" "}
+                <span className="amount">{money(s.amount)}</span>
+              </span>{" "}
+              <span className="muted">{formatDate(s.date, locale)}</span>
+            </li>
+          ))}
+        </ul>
       )}
 
       <GroupLink />

@@ -22,6 +22,13 @@
       "when": 1794660910576,
       "tag": "0002_expenses",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794677145489,
+      "tag": "0003_settlements",
+      "breakpoints": true
     }
   ]
 }
