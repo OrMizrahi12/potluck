@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or, sql } from "drizzle-orm";
 import { findCurrency, type Currency } from "../currency/currencies";
 import {
   expenseParticipants,
@@ -27,6 +27,8 @@ export type MemberView = {
   version: number;
   /** Minor units: positive when the group owes the member, negative when they owe the group. */
   balance: number;
+  /** Whether any expense (as payer or participant) or settlement names the member, so they can't be deleted. */
+  referenced: boolean;
 };
 
 export type ExpenseView = {
@@ -448,6 +450,54 @@ export async function setMemberActive(
   return { ok: true, view: await readBack(db, linkToken) };
 }
 
+export type DeleteMemberRefusal = MemberRefRefusal | "member-referenced";
+
+/**
+ * Deletes a member no expense or settlement references, as if they'd never
+ * been added. A referenced member can only be made inactive, so history and
+ * balances stay correct; the database's foreign keys back this up.
+ */
+export async function deleteMember(
+  db: Db,
+  linkToken: string,
+  input: MemberRef
+): Promise<CommandResult<DeleteMemberRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const found = await lockMember(tx, linkToken, input);
+    if (typeof found === "string") return found;
+
+    const references = await Promise.all([
+      tx
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(eq(expenses.payerId, found.id))
+        .limit(1),
+      tx
+        .select({ id: expenseParticipants.expenseId })
+        .from(expenseParticipants)
+        .where(eq(expenseParticipants.memberId, found.id))
+        .limit(1),
+      tx
+        .select({ id: settlements.id })
+        .from(settlements)
+        .where(
+          or(eq(settlements.fromId, found.id), eq(settlements.toId, found.id))
+        )
+        .limit(1),
+    ]);
+    if (references.some((rows) => rows.length > 0))
+      return "member-referenced" as const;
+
+    await tx.delete(members).where(eq(members.id, found.id));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
 /**
  * The member a command names, with the group locked (see lockGroup), or why
  * the command can't act on them.
@@ -600,6 +650,11 @@ export async function readGroupView(
   const balanceById = new Map(
     money.balances.map((b) => [b.memberId, b.balance])
   );
+  const referencedIds = new Set([
+    ...expenseRows.map((e) => e.payerId),
+    ...participantRows.map((p) => p.memberId),
+    ...settlementRows.flatMap((s) => [s.fromId, s.toId]),
+  ]);
 
   const currency = currencyOf(group.currency);
   return {
@@ -611,6 +666,7 @@ export async function readGroupView(
     members: memberRows.map((m) => ({
       ...m,
       balance: balanceById.get(m.id) ?? 0,
+      referenced: referencedIds.has(m.id),
     })),
     expenses: expenseRows.slice(0, expenseLimit).map((e) => ({
       ...e,

@@ -1,4 +1,6 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { members } from "../db/schema";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
 import {
@@ -6,6 +8,7 @@ import {
   addMember,
   addSettlement,
   createGroup,
+  deleteMember,
   readGroupView,
   renameMember,
   setMemberActive,
@@ -287,5 +290,146 @@ describe("inactive member", () => {
       })
     ).toEqual({ ok: false, reason: "stale-version" });
     expect((await readGroupView(db, linkToken))?.members[1].active).toBe(true);
+  });
+});
+
+describe("delete member", () => {
+  it("deletes a member no expense or settlement references", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+
+    const result = await deleteMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => m.name)).toEqual(["Ana", "Chloé"]);
+  });
+
+  it("shows which members are referenced, so the page knows whom it can delete", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben } = await lisbonGroup(db);
+    await addMember(db, linkToken, { name: "Dan" });
+
+    // Ana pays for Ben; Chloé and Dan appear nowhere yet.
+    const result = await addExpense(db, linkToken, {
+      description: "Taxi",
+      amount: "10.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ben],
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => [m.name, m.referenced])).toEqual([
+      ["Ana", true],
+      ["Ben", true],
+      ["Chloé", false],
+      ["Dan", false],
+    ]);
+  });
+
+  it("puts a member added after a deletion last", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+    await deleteMember(db, linkToken, { memberId: ben, version: 1 });
+
+    const result = await addMember(db, linkToken, { name: "Ben" });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => m.name)).toEqual([
+      "Ana",
+      "Chloé",
+      "Ben",
+    ]);
+  });
+});
+
+describe("delete member refusals", () => {
+  it.each([
+    ["the payer of an expense", "payer"],
+    ["a participant in an expense", "participant"],
+    ["the member who paid in a settlement", "from"],
+    ["the member who was paid in a settlement", "to"],
+  ] as const)("refuses to delete %s", async (_, role) => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db);
+    // Ben is referenced only in the given role.
+    if (role === "payer" || role === "participant") {
+      await addExpense(db, linkToken, {
+        description: "Dinner",
+        amount: "30.00",
+        date: "2026-11-14",
+        payerId: role === "payer" ? ben : ana,
+        participantIds: role === "payer" ? [ana, chloe] : [ana, ben],
+      });
+    } else {
+      await addSettlement(db, linkToken, {
+        fromId: role === "from" ? ben : ana,
+        toId: role === "from" ? ana : ben,
+        amount: "5.00",
+        date: "2026-11-14",
+      });
+    }
+
+    expect(
+      await deleteMember(db, linkToken, { memberId: ben, version: 1 })
+    ).toEqual({ ok: false, reason: "member-referenced" });
+    expect(
+      (await readGroupView(db, linkToken))?.members.map((m) => m.name)
+    ).toEqual(["Ana", "Ben", "Chloé"]);
+  });
+
+  it("is backed by the database, whose foreign keys block deleting a referenced member", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db);
+    await addExpense(db, linkToken, {
+      description: "Dinner",
+      amount: "30.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ben],
+    });
+    await addSettlement(db, linkToken, {
+      fromId: chloe,
+      toId: ana,
+      amount: "5.00",
+      date: "2026-11-14",
+    });
+
+    for (const id of [ana, ben, chloe]) {
+      await expect(
+        db.delete(members).where(eq(members.id, id))
+      ).rejects.toThrow();
+    }
+  });
+
+  it("refuses a stale version", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+    await renameMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      name: "Bo",
+    });
+
+    expect(
+      await deleteMember(db, linkToken, { memberId: ben, version: 1 })
+    ).toEqual({ ok: false, reason: "stale-version" });
+    expect((await readGroupView(db, linkToken))?.members).toHaveLength(3);
+  });
+
+  it("refuses a member already deleted, or not a member at all", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+    await deleteMember(db, linkToken, { memberId: ben, version: 1 });
+
+    expect(
+      await deleteMember(db, linkToken, { memberId: ben, version: 1 })
+    ).toEqual({ ok: false, reason: "member-unknown" });
+    expect(
+      await deleteMember(db, linkToken, { memberId: "not-an-id", version: 1 })
+    ).toEqual({ ok: false, reason: "member-unknown" });
   });
 });
