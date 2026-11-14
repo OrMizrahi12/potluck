@@ -8,6 +8,10 @@ Potluck tracks money shared within a group: who paid for what, and what each mem
 A set of members who share expenses in one currency.
 _Avoid_: Party, event, trip, household
 
+**Group link**:
+The address that opens one group; anyone who has it can open the group, and it is the only way in.
+_Avoid_: Invite, share link, token (for the whole address)
+
 **Member**:
 A named person within one group.
 _Avoid_: User, person, friend, account
