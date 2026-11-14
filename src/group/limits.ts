@@ -7,6 +7,7 @@ export const LIMITS = {
   /** An expense's description. */
   descriptionLength: 100,
   expenses: 5000,
-  /** The largest expense, in major units of the group's currency. */
+  settlements: 5000,
+  /** The largest expense or settlement, in major units of the group's currency. */
   amountMajorUnits: 10_000_000,
 } as const;

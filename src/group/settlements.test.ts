@@ -273,4 +273,33 @@ describe("add settlement refusals", () => {
       })
     ).rejects.toThrow();
   });
+
+  it("caps a group at 5,000 settlements", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben } = await lisbonGroup(db);
+    // Setup only: 4,999 settlements written straight to the table, since
+    // adding them one by one through the service would take minutes.
+    const [group] = await db.select({ id: groups.id }).from(groups);
+    await db.insert(settlements).values(
+      Array.from({ length: 4999 }, () => ({
+        groupId: group.id,
+        fromId: ana,
+        toId: ben,
+        amount: 200,
+        date: "2026-01-01",
+      }))
+    );
+    const settlement = {
+      fromId: ben,
+      toId: ana,
+      amount: "2",
+      date: "2026-11-14",
+    };
+
+    expect((await addSettlement(db, linkToken, settlement)).ok).toBe(true);
+    expect(await addSettlement(db, linkToken, settlement)).toEqual({
+      ok: false,
+      reason: "too-many-settlements",
+    });
+  }, 60_000);
 });

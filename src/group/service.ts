@@ -258,7 +258,8 @@ export type AddSettlementRefusal =
   | "date-unreadable"
   | "from-unknown"
   | "to-unknown"
-  | "settlement-to-self";
+  | "settlement-to-self"
+  | "too-many-settlements";
 
 export type AddSettlementInput = {
   /** The member who paid. */
@@ -307,6 +308,12 @@ export async function addSettlement(
     );
     if (!memberIds.has(input.fromId)) return "from-unknown" as const;
     if (!memberIds.has(input.toId)) return "to-unknown" as const;
+
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(settlements)
+      .where(eq(settlements.groupId, group.id));
+    if (count >= LIMITS.settlements) return "too-many-settlements" as const;
 
     await tx.insert(settlements).values({
       groupId: group.id,
