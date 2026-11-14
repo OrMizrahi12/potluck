@@ -276,6 +276,36 @@ export async function editExpense(
   return { ok: true, view: await readWrittenGroup(db, linkToken) };
 }
 
+export type DeleteExpenseRefusal =
+  "group-unknown" | "expense-unknown" | "stale-version";
+
+/**
+ * Deletes an expense for good, with its participants: there's no undo.
+ * Refused as stale when the expense has changed since `version`.
+ */
+export async function deleteExpense(
+  db: Db,
+  linkToken: string,
+  input: { expenseId: string; version: number }
+): Promise<CommandResult<DeleteExpenseRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
+    if (stored === undefined) return "expense-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+
+    // Its participants go with it: their foreign key cascades.
+    await tx.delete(expenses).where(eq(expenses.id, input.expenseId));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readWrittenGroup(db, linkToken) };
+}
+
 /**
  * Locks a group's row for the rest of the transaction, which serializes its
  * writers: two expenses added at once can't both slip under the cap.
