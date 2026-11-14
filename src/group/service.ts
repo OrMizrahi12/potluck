@@ -1,7 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { findCurrency, type Currency } from "../currency/currencies";
-import { expenseParticipants, expenses, groups, members } from "../db/schema";
+import {
+  expenseParticipants,
+  expenses,
+  groups,
+  members,
+  settlements,
+} from "../db/schema";
 import type { Db } from "../db/types";
 import { parseAmount } from "../money/amount";
 import { computeGroupMoney, type Share } from "../money/group-money";
@@ -45,6 +51,21 @@ export type GroupView = {
   expenses: ExpenseView[];
   /** Whether older expenses exist beyond `expenses`. */
   hasOlderExpenses: boolean;
+  /** Newest first. */
+  settlements: SettlementView[];
+};
+
+export type SettlementView = {
+  id: string;
+  /** The member who paid. */
+  fromId: string;
+  /** The member who was paid. */
+  toId: string;
+  /** Minor units. */
+  amount: number;
+  /** YYYY-MM-DD. */
+  date: string;
+  version: number;
 };
 
 /** How many expenses a group view shows unless asked for more. */
@@ -179,11 +200,8 @@ export async function addExpense(
     if (!group) return "group-unknown" as const;
     const digits = currencyOf(group.currency).digits;
 
-    const amount = parseAmount(input.amount, digits);
-    if (amount === undefined) return "amount-unreadable" as const;
-    if (amount <= 0) return "amount-not-positive" as const;
-    if (amount > LIMITS.amountMajorUnits * 10 ** digits)
-      return "amount-too-large" as const;
+    const amount = readAmount(input.amount, digits);
+    if (typeof amount === "string") return amount;
 
     const memberIds = new Set(
       (
@@ -223,6 +241,78 @@ export async function addExpense(
       .values(
         participantIds.map((memberId) => ({ expenseId: expense.id, memberId }))
       );
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  const view = await readGroupView(db, linkToken);
+  if (!view) throw new Error("A group just written could not be read back.");
+  return { ok: true, view };
+}
+
+export type AddSettlementRefusal =
+  | "group-unknown"
+  | "amount-unreadable"
+  | "amount-not-positive"
+  | "amount-too-large"
+  | "date-unreadable"
+  | "from-unknown"
+  | "to-unknown";
+
+export type AddSettlementInput = {
+  /** The member who paid. */
+  fromId: string;
+  /** The member who was paid. */
+  toId: string;
+  /** As typed, in the group's currency. */
+  amount: string;
+  /** YYYY-MM-DD. */
+  date: string;
+};
+
+/**
+ * Records that one member paid another outside Potluck. Any positive amount
+ * up to the cap is accepted, whatever it does to balances: a partial payment,
+ * an overpayment, or a loan from lender to borrower.
+ */
+export async function addSettlement(
+  db: Db,
+  linkToken: string,
+  input: AddSettlementInput
+): Promise<CommandResult<AddSettlementRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!isCalendarDate(input.date)) return refuse("date-unreadable");
+
+  const refusal = await db.transaction(async (tx) => {
+    // Locking the group row serializes its writers (see addExpense).
+    const [group] = await tx
+      .select({ id: groups.id, currency: groups.currency })
+      .from(groups)
+      .where(eq(groups.linkToken, linkToken))
+      .for("update");
+    if (!group) return "group-unknown" as const;
+
+    const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+    if (typeof amount === "string") return amount;
+
+    const memberIds = new Set(
+      (
+        await tx
+          .select({ id: members.id })
+          .from(members)
+          .where(eq(members.groupId, group.id))
+      ).map((m) => m.id)
+    );
+    if (!memberIds.has(input.fromId)) return "from-unknown" as const;
+    if (!memberIds.has(input.toId)) return "to-unknown" as const;
+
+    await tx.insert(settlements).values({
+      groupId: group.id,
+      fromId: input.fromId,
+      toId: input.toId,
+      amount,
+      date: input.date,
+    });
     return undefined;
   });
   if (refusal) return refuse(refusal);
@@ -283,6 +373,23 @@ export async function readGroupView(
     participantIdsByExpense.set(expenseId, ids);
   }
 
+  const settlementRows = await db
+    .select({
+      id: settlements.id,
+      fromId: settlements.fromId,
+      toId: settlements.toId,
+      amount: settlements.amount,
+      date: settlements.date,
+      version: settlements.version,
+    })
+    .from(settlements)
+    .where(eq(settlements.groupId, group.id))
+    .orderBy(
+      desc(settlements.date),
+      desc(settlements.createdAt),
+      desc(settlements.id)
+    );
+
   const money = computeGroupMoney({
     members: memberRows,
     expenses: expenseRows.map((e) => ({
@@ -291,7 +398,7 @@ export async function readGroupView(
       payerId: e.payerId,
       participantIds: participantIdsByExpense.get(e.id) ?? [],
     })),
-    settlements: [],
+    settlements: settlementRows,
   });
   const balanceById = new Map(
     money.balances.map((b) => [b.memberId, b.balance])
@@ -313,6 +420,7 @@ export async function readGroupView(
       shares: money.shares.get(e.id) ?? [],
     })),
     hasOlderExpenses: expenseRows.length > expenseLimit,
+    settlements: settlementRows,
   };
 }
 
@@ -321,6 +429,22 @@ function currencyOf(code: string): Currency {
   if (!currency)
     throw new Error(`Group has a currency outside the table: ${code}`);
   return currency;
+}
+
+/**
+ * Typed amount text in minor units, or why it can't be an expense's or a
+ * settlement's amount: at least 1 minor unit and at most the cap.
+ */
+function readAmount(
+  text: string,
+  digits: number
+): number | "amount-unreadable" | "amount-not-positive" | "amount-too-large" {
+  const amount = parseAmount(text, digits);
+  if (amount === undefined) return "amount-unreadable";
+  if (amount <= 0) return "amount-not-positive";
+  if (amount > LIMITS.amountMajorUnits * 10 ** digits)
+    return "amount-too-large";
+  return amount;
 }
 
 /** Whether text is a real calendar date written YYYY-MM-DD. */
