@@ -340,6 +340,91 @@ export async function addSettlement(
   return { ok: true, view };
 }
 
+type MemberNameRefusal =
+  "member-name-missing" | "member-name-too-long" | "member-name-duplicate";
+
+export type AddMemberRefusal =
+  "group-unknown" | MemberNameRefusal | "too-many-members";
+
+/** Adds an active member after the group's existing members. */
+export async function addMember(
+  db: Db,
+  linkToken: string,
+  input: { name: string }
+): Promise<CommandResult<AddMemberRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  const name = cleanName(input.name);
+  const nameRefusal = memberNameRefusal(name);
+  if (nameRefusal) return refuse(nameRefusal);
+
+  const refusal = await writeMemberName(db, async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+
+    const others = await tx
+      .select({ name: members.name, position: members.position })
+      .from(members)
+      .where(eq(members.groupId, group.id));
+    if (others.length >= LIMITS.members) return "too-many-members" as const;
+    if (others.some((m) => nameKey(m.name) === nameKey(name)))
+      return "member-name-duplicate" as const;
+
+    // After every member, including any deleted since: creation order holds.
+    const position = Math.max(-1, ...others.map((m) => m.position)) + 1;
+    await tx.insert(members).values({ groupId: group.id, name, position });
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * The group a link opens, locked for the rest of the transaction. Locking the
+ * group row serializes its writers, so two writes at once can't both slip
+ * under a cap or past a check.
+ */
+async function lockGroup(tx: Tx, linkToken: string) {
+  const [group] = await tx
+    .select({
+      id: groups.id,
+      currency: groups.currency,
+      version: groups.version,
+    })
+    .from(groups)
+    .where(eq(groups.linkToken, linkToken))
+    .for("update");
+  return group;
+}
+
+/**
+ * Runs a transaction that writes a member's name. If the database's name index
+ * catches a duplicate the service's check passed (see nameKey), it's still a refusal.
+ */
+async function writeMemberName<Reason extends string>(
+  db: Db,
+  write: (tx: Tx) => Promise<Reason | undefined>
+): Promise<Reason | "member-name-duplicate" | undefined> {
+  try {
+    return await db.transaction(write);
+  } catch (error) {
+    if (violates(error, "members_group_name_unique"))
+      return "member-name-duplicate";
+    throw error;
+  }
+}
+
+/** Why a cleaned name can't be a member's, if it can't. */
+function memberNameRefusal(
+  name: string
+): "member-name-missing" | "member-name-too-long" | undefined {
+  if (name === "") return "member-name-missing";
+  if (name.length > LIMITS.memberNameLength) return "member-name-too-long";
+  return undefined;
+}
+
 /** The group a link opens, or undefined when no group has that link. */
 export async function readGroupView(
   db: Db,
@@ -441,6 +526,13 @@ export async function readGroupView(
     settlements: settlementRows,
     suggestedSettlements: money.suggestedSettlements,
   };
+}
+
+/** The view of a group a command just wrote. */
+async function readBack(db: Db, linkToken: string): Promise<GroupView> {
+  const view = await readGroupView(db, linkToken);
+  if (!view) throw new Error("A group just written could not be read back.");
+  return view;
 }
 
 function currencyOf(code: string): Currency {
