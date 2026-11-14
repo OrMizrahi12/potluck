@@ -95,10 +95,19 @@ export type CreateGroupRefusal =
   | "member-name-duplicate"
   | "too-many-members";
 
+/**
+ * Creates a group at a new random link. Only the seed passes `linkToken`, so
+ * its fake groups open at the same link on every run; never pass one for a
+ * real group, whose link is its only credential.
+ */
 export async function createGroup(
   db: Db,
-  input: { name: string; currency: string; memberNames: string[] }
+  input: { name: string; currency: string; memberNames: string[] },
+  { linkToken = newLinkToken() }: { linkToken?: string } = {}
 ): Promise<CommandResult<CreateGroupRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) {
+    throw new Error(`Not the shape of a group link: ${linkToken}`);
+  }
   const name = cleanName(input.name);
   if (name === "") return refuse("group-name-missing");
   if (name.length > LIMITS.groupNameLength)
@@ -116,7 +125,6 @@ export async function createGroup(
     return refuse("member-name-duplicate");
   }
 
-  const linkToken = newLinkToken();
   try {
     await db.transaction(async (tx) => {
       const [group] = await tx
