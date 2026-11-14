@@ -6,6 +6,7 @@ import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { minorToDecimal } from "@/money/amount";
 import { DeleteEntry } from "../../delete-entry";
+import { MissingEntry } from "../../missing-entry";
 import { SettlementForm } from "../settlement-form";
 import { deleteSettlementAction, editSettlementAction } from "./actions";
 
@@ -18,7 +19,11 @@ export const metadata: Metadata = {
 async function EditSettlement({ token, id }: { token: string; id: string }) {
   const group = await readGroupView(getDb(), token, { expenseLimit: 0 });
   const settlement = group?.settlements.find((s) => s.id === id);
-  if (!group || !settlement) notFound();
+  if (!group) notFound();
+  if (!settlement)
+    return (
+      <MissingEntry token={token} groupName={group.name} entry="settlement" />
+    );
 
   return (
     <>

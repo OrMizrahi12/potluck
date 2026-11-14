@@ -7,6 +7,7 @@ import { LIMITS } from "@/group/limits";
 import { readGroupView } from "@/group/service";
 import { minorToDecimal } from "@/money/amount";
 import { DeleteEntry } from "../../delete-entry";
+import { MissingEntry } from "../../missing-entry";
 import { ExpenseForm } from "../expense-form";
 import { deleteExpenseAction, editExpenseAction } from "./actions";
 
@@ -23,7 +24,11 @@ async function EditExpense({ token, id }: { token: string; id: string }) {
     expenseLimit: LIMITS.expenses,
   });
   const expense = group?.expenses.find((e) => e.id === id);
-  if (!group || !expense) notFound();
+  if (!group) notFound();
+  if (!expense)
+    return (
+      <MissingEntry token={token} groupName={group.name} entry="expense" />
+    );
 
   return (
     <>

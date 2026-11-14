@@ -115,7 +115,10 @@ async function seedFlatShare(db: Db) {
   );
 }
 
-/** Partial settlements, an overpayment, and a loan from lender to borrower. */
+/**
+ * Settlements smaller and larger than the balance, and a loan from the member
+ * who lent to the member who borrowed.
+ */
 async function seedSkiCabin(db: Db) {
   const link = SEED_LINKS.skiCabin;
   const group = await recreate(db, link, {

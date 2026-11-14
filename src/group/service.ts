@@ -258,11 +258,11 @@ export async function editExpense(
   if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
 
   const refusal = await db.transaction(async (tx) => {
-    const group = await lockGroup(tx, linkToken);
-    if (!group) return "group-unknown" as const;
-    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
-    if (stored === undefined) return "expense-unknown" as const;
-    if (stored !== input.version) return "stale-version" as const;
+    const group = await lockEntry(tx, linkToken, "expense", {
+      id: input.expenseId,
+      version: input.version,
+    });
+    if (typeof group === "string") return group;
     const expense = await checkExpense(tx, group, input);
     if (typeof expense === "string") return expense;
 
@@ -302,11 +302,11 @@ export async function deleteExpense(
   if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
 
   const refusal = await db.transaction(async (tx) => {
-    const group = await lockGroup(tx, linkToken);
-    if (!group) return "group-unknown" as const;
-    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
-    if (stored === undefined) return "expense-unknown" as const;
-    if (stored !== input.version) return "stale-version" as const;
+    const found = await lockEntry(tx, linkToken, "expense", {
+      id: input.expenseId,
+      version: input.version,
+    });
+    if (typeof found === "string") return found;
 
     // Its participants go with it: their foreign key cascades.
     await tx.delete(expenses).where(eq(expenses.id, input.expenseId));
@@ -317,21 +317,31 @@ export async function deleteExpense(
 }
 
 /**
- * The stored version of the group's expense or settlement with this id, or
- * undefined when the group has none. Call it with the group locked (see
- * lockGroup), so the version can't change before the write that checks it.
+ * The group, locked (see lockGroup), when its expense or settlement with this
+ * id is still at `version`; otherwise why the command can't act on it. Locking
+ * first means the version can't change before the write that checks it.
  */
-async function storedVersion(
+async function lockEntry<Entry extends "expense" | "settlement">(
   tx: Tx,
-  table: typeof expenses | typeof settlements,
-  groupId: string,
-  id: string
-): Promise<number | undefined> {
+  linkToken: string,
+  entry: Entry,
+  { id, version }: { id: string; version: number }
+): Promise<
+  | { id: string; currency: string }
+  | "group-unknown"
+  | `${Entry}-unknown`
+  | "stale-version"
+> {
+  const group = await lockGroup(tx, linkToken);
+  if (!group) return "group-unknown";
+  const table = entry === "expense" ? expenses : settlements;
   const [row] = await tx
     .select({ version: table.version })
     .from(table)
-    .where(and(eq(table.id, id), eq(table.groupId, groupId)));
-  return row?.version;
+    .where(and(eq(table.id, id), eq(table.groupId, group.id)));
+  if (!row) return `${entry}-unknown`;
+  if (row.version !== version) return "stale-version";
+  return group;
 }
 
 /** An expense as it will be stored, or why the group's rules refuse it. */
@@ -410,8 +420,9 @@ export type AddSettlementInput = {
 
 /**
  * Records that one member paid another outside Potluck. Any positive amount
- * up to the cap is accepted, whatever it does to balances: a partial payment,
- * an overpayment, or a loan from lender to borrower.
+ * up to the cap is accepted, whatever it does to balances: a settlement
+ * smaller than the balance, one larger than the balance, or a loan from the
+ * member who lent to the member who borrowed.
  */
 export async function addSettlement(
   db: Db,
@@ -462,16 +473,11 @@ export async function editSettlement(
   if (!UUID_SHAPE.test(input.settlementId)) return refuse("settlement-unknown");
 
   const refusal = await db.transaction(async (tx) => {
-    const group = await lockGroup(tx, linkToken);
-    if (!group) return "group-unknown" as const;
-    const stored = await storedVersion(
-      tx,
-      settlements,
-      group.id,
-      input.settlementId
-    );
-    if (stored === undefined) return "settlement-unknown" as const;
-    if (stored !== input.version) return "stale-version" as const;
+    const group = await lockEntry(tx, linkToken, "settlement", {
+      id: input.settlementId,
+      version: input.version,
+    });
+    if (typeof group === "string") return group;
     const settlement = await checkSettlement(tx, group, input);
     if (typeof settlement === "string") return settlement;
 
@@ -501,16 +507,11 @@ export async function deleteSettlement(
   if (!UUID_SHAPE.test(input.settlementId)) return refuse("settlement-unknown");
 
   const refusal = await db.transaction(async (tx) => {
-    const group = await lockGroup(tx, linkToken);
-    if (!group) return "group-unknown" as const;
-    const stored = await storedVersion(
-      tx,
-      settlements,
-      group.id,
-      input.settlementId
-    );
-    if (stored === undefined) return "settlement-unknown" as const;
-    if (stored !== input.version) return "stale-version" as const;
+    const found = await lockEntry(tx, linkToken, "settlement", {
+      id: input.settlementId,
+      version: input.version,
+    });
+    if (typeof found === "string") return found;
 
     await tx.delete(settlements).where(eq(settlements.id, input.settlementId));
     return undefined;
@@ -606,20 +607,19 @@ export async function changeCurrency(
     if (!group) return "group-unknown" as const;
     if (group.version !== input.version) return "stale-version" as const;
 
-    const entries = await Promise.all([
-      tx
-        .select({ id: expenses.id })
-        .from(expenses)
-        .where(eq(expenses.groupId, group.id))
-        .limit(1),
-      tx
-        .select({ id: settlements.id })
-        .from(settlements)
-        .where(eq(settlements.groupId, group.id))
-        .limit(1),
-    ]);
-    if (entries.some((rows) => rows.length > 0))
-      return "group-has-entries" as const;
+    // One query at a time: a transaction's single client can't run two at once.
+    const anExpense = await tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.groupId, group.id))
+      .limit(1);
+    if (anExpense.length > 0) return "group-has-entries" as const;
+    const aSettlement = await tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(eq(settlements.groupId, group.id))
+      .limit(1);
+    if (aSettlement.length > 0) return "group-has-entries" as const;
 
     await tx
       .update(groups)
@@ -749,27 +749,27 @@ export async function deleteMember(
     const found = await lockMember(tx, linkToken, input);
     if (typeof found === "string") return found;
 
-    const references = await Promise.all([
-      tx
-        .select({ id: expenses.id })
-        .from(expenses)
-        .where(eq(expenses.payerId, found.id))
-        .limit(1),
-      tx
-        .select({ id: expenseParticipants.expenseId })
-        .from(expenseParticipants)
-        .where(eq(expenseParticipants.memberId, found.id))
-        .limit(1),
-      tx
-        .select({ id: settlements.id })
-        .from(settlements)
-        .where(
-          or(eq(settlements.fromId, found.id), eq(settlements.toId, found.id))
-        )
-        .limit(1),
-    ]);
-    if (references.some((rows) => rows.length > 0))
-      return "member-referenced" as const;
+    // One query at a time: a transaction's single client can't run two at once.
+    const asPayer = await tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.payerId, found.id))
+      .limit(1);
+    if (asPayer.length > 0) return "member-referenced" as const;
+    const aShare = await tx
+      .select({ id: expenseParticipants.expenseId })
+      .from(expenseParticipants)
+      .where(eq(expenseParticipants.memberId, found.id))
+      .limit(1);
+    if (aShare.length > 0) return "member-referenced" as const;
+    const inASettlement = await tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(
+        or(eq(settlements.fromId, found.id), eq(settlements.toId, found.id))
+      )
+      .limit(1);
+    if (inASettlement.length > 0) return "member-referenced" as const;
 
     await tx.delete(members).where(eq(members.id, found.id));
     return undefined;

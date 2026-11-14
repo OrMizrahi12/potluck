@@ -242,3 +242,88 @@ test("a save from a version someone else changed says it changed and keeps their
 
   expect([...benErrors, ...chloeErrors], "browser errors").toEqual([]);
 });
+
+test("the link of a deleted expense or settlement says so and keeps the group on this device", async ({
+  page,
+}, testInfo) => {
+  const name = `Kyoto trip (${testInfo.project.name} ${Date.now()})`;
+  await createGroup(page, {
+    name,
+    currency: "JPY",
+    memberNames: ["Ana", "Ben", "Chloé"],
+  });
+  const groupLink = page.url();
+  await sayWhoYouAre(page, "Ana");
+  await addExpense(page, {
+    description: "Dinner",
+    amount: "900",
+    payer: "Ana",
+  });
+  await page.getByRole("link", { name: "Record a settlement" }).click();
+  const record = page.getByRole("form", { name: "Record a settlement" });
+  await record.getByLabel("From").selectOption({ label: "Ben" });
+  await record.getByLabel("To").selectOption({ label: "Ana" });
+  await record.getByLabel("Amount (JPY)").fill("300");
+  await record.getByRole("button", { name: "Record settlement" }).click();
+  await expect(settlements(page)).toHaveText([/^Ben paid Ana ¥300/]);
+
+  /** Deletes the expense or settlement whose edit page `open` leads to, and returns that page's link. */
+  async function deleteAndKeepLink(
+    open: () => Promise<void>,
+    entry: "expense" | "settlement"
+  ) {
+    await open();
+    await expect(page).toHaveURL(new RegExp(`/${entry}s/[^/]+$`));
+    const link = page.url();
+    const remove = page.getByRole("form", { name: `Delete the ${entry}` });
+    await remove.getByRole("button", { name: `Delete ${entry}` }).click();
+    await remove
+      .getByRole("button", { name: `Yes, delete the ${entry}` })
+      .click();
+    await expect(page).toHaveURL(groupLink);
+    return link;
+  }
+  const expenseLink = await deleteAndKeepLink(
+    () => page.getByRole("link", { name: "Edit Dinner" }).click(),
+    "expense"
+  );
+  const settlementLink = await deleteAndKeepLink(
+    () => settlements(page).getByRole("link", { name: /^Edit/ }).click(),
+    "settlement"
+  );
+
+  await test.step("a deleted expense's link says the expense is gone", async () => {
+    await page.goto(expenseLink);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "No expense at this link"
+    );
+    await expectNoSidewaysScroll(page);
+    await screenshot(page, testInfo, "deleted-expense-link");
+  });
+
+  await test.step("a deleted settlement's link says the settlement is gone and leads back to the group", async () => {
+    await page.goto(settlementLink);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      "No settlement at this link"
+    );
+    await expectNoSidewaysScroll(page);
+    await screenshot(page, testInfo, "deleted-settlement-link");
+    await page.getByRole("link", { name }).click();
+    await expect(page).toHaveURL(groupLink);
+  });
+
+  await test.step("my groups still has the group, and who you are in it", async () => {
+    await page.goto("/");
+    await page
+      .getByRole("list", { name: "My groups" })
+      .getByRole("link", { name })
+      .click();
+    await expect(page).toHaveURL(groupLink);
+    await expect(
+      page.getByRole("region", { name: "You in this group" })
+    ).toContainText("Ana");
+    await expect(
+      page.getByRole("region", { name: "Who are you?" })
+    ).toBeHidden();
+  });
+});

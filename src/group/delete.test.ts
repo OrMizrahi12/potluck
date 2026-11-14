@@ -119,7 +119,7 @@ describe("delete expense", () => {
 
 describe("delete settlement", () => {
   // Ana paid 30.00 for all three: Ana +20.00, Ben −10.00, Chloé −10.00.
-  // Ben's 10.00 to Ana settled him up; without it he owes 10.00 again.
+  // Ben's 10.00 to Ana left him settled up; without it he owes 10.00 again.
   it("removes the settlement, and balances and suggested settlements follow", async () => {
     const db = await createTestDb();
     const { linkToken, ana, ben, chloe } = await lisbonGroup(db);
