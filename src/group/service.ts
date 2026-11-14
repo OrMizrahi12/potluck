@@ -88,6 +88,16 @@ export async function createGroup(
   return { ok: true, view };
 }
 
+/** Whether a group has this link: one indexed lookup, for checks that run before a page renders. */
+export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
+  const [group] = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .where(eq(groups.linkToken, linkToken))
+    .limit(1);
+  return group !== undefined;
+}
+
 /** The group a link opens, or undefined when no group has that link. */
 export async function readGroupView(
   db: Db,
