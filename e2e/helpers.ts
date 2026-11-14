@@ -26,3 +26,23 @@ export async function expectNoSidewaysScroll(page: Page) {
   );
   expect(overflow, "page wider than the viewport").toBe(0);
 }
+
+/** Creates a group from the home page and waits for its page to open. */
+export async function createGroup(
+  page: Page,
+  {
+    name,
+    currency,
+    memberNames,
+  }: { name: string; currency: string; memberNames: string[] }
+) {
+  await page.goto("/");
+  await page.getByLabel("Group name").fill(name);
+  await page.getByLabel("Currency").selectOption(currency);
+  for (const [i, memberName] of memberNames.entries()) {
+    if (i >= 2) await page.getByRole("button", { name: "Add member" }).click();
+    await page.getByLabel(`Member ${i + 1}`, { exact: true }).fill(memberName);
+  }
+  await page.getByRole("button", { name: "Create group" }).click();
+  await expect(page).toHaveURL(/\/g\/[A-Za-z0-9_-]{22,}$/);
+}

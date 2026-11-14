@@ -4,6 +4,9 @@ export const LIMITS = {
   groupNameLength: 100,
   memberNameLength: 50,
   members: 50,
-  /** An expense's description. Enforced once expenses can be recorded. */
+  /** An expense's description. */
   descriptionLength: 100,
+  expenses: 5000,
+  /** The largest expense, in major units of the group's currency. */
+  amountMajorUnits: 10_000_000,
 } as const;

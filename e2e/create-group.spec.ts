@@ -55,7 +55,9 @@ test("create a group, copy its link, open it and see the members", async ({
       groupName
     );
     await expect(visitor.getByText("Currency: EUR · Euro")).toBeVisible();
-    await expect(visitor.getByRole("listitem")).toHaveText(memberNames);
+    await expect(
+      visitor.getByRole("list", { name: "Balances" }).getByRole("listitem")
+    ).toHaveText(memberNames.map((name) => `${name} settled up`));
     await expectNoSidewaysScroll(visitor);
     await screenshot(visitor, testInfo, "3-link-opened-elsewhere");
 

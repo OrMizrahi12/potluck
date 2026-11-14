@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
-import { findCurrency } from "../currency/currencies";
-import { groups, members } from "../db/schema";
+import { asc, desc, eq, sql } from "drizzle-orm";
+import { findCurrency, type Currency } from "../currency/currencies";
+import { expenseParticipants, expenses, groups, members } from "../db/schema";
 import type { Db } from "../db/types";
+import { parseAmount } from "../money/amount";
+import { computeGroupMoney, type Share } from "../money/group-money";
 import { LIMITS } from "./limits";
 
 // The group service: the one seam the pages call. Every command either
@@ -13,6 +15,22 @@ export type MemberView = {
   name: string;
   active: boolean;
   version: number;
+  /** Minor units: positive when the group owes the member, negative when they owe the group. */
+  balance: number;
+};
+
+export type ExpenseView = {
+  /** Assigned at creation and never changed. */
+  id: string;
+  description: string;
+  /** Minor units. */
+  amount: number;
+  /** YYYY-MM-DD. */
+  date: string;
+  payerId: string;
+  version: number;
+  /** Every participant's share, in member creation order; `extra` marks a leftover unit. */
+  shares: Share[];
 };
 
 export type GroupView = {
@@ -23,7 +41,14 @@ export type GroupView = {
   version: number;
   /** In creation order. */
   members: MemberView[];
+  /** Newest first: the most recent `expenseLimit` of them. */
+  expenses: ExpenseView[];
+  /** Whether older expenses exist beyond `expenses`. */
+  hasOlderExpenses: boolean;
 };
+
+/** How many expenses a group view shows unless asked for more. */
+export const EXPENSE_PAGE_SIZE = 20;
 
 export type CommandResult<Reason extends string> =
   { ok: true; view: GroupView } | { ok: false; reason: Reason };
@@ -103,10 +128,115 @@ export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
   return group !== undefined;
 }
 
+export type AddExpenseRefusal =
+  | "group-unknown"
+  | "description-missing"
+  | "description-too-long"
+  | "amount-unreadable"
+  | "amount-not-positive"
+  | "amount-too-large"
+  | "date-unreadable"
+  | "payer-unknown"
+  | "participant-unknown"
+  | "participants-only-payer"
+  | "amount-too-small-to-split"
+  | "too-many-expenses";
+
+export type AddExpenseInput = {
+  description: string;
+  /** As typed, in the group's currency: "12.34", or "1234" for yen. */
+  amount: string;
+  /** YYYY-MM-DD. */
+  date: string;
+  payerId: string;
+  participantIds: string[];
+};
+
+/**
+ * Records an expense, split equally among its participants. The payer is a
+ * participant only if listed among them.
+ */
+export async function addExpense(
+  db: Db,
+  linkToken: string,
+  input: AddExpenseInput
+): Promise<CommandResult<AddExpenseRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  const description = cleanName(input.description);
+  if (description === "") return refuse("description-missing");
+  if (description.length > LIMITS.descriptionLength)
+    return refuse("description-too-long");
+  if (!isCalendarDate(input.date)) return refuse("date-unreadable");
+
+  const refusal = await db.transaction(async (tx) => {
+    // Locking the group row serializes its writers, so two expenses added at
+    // once can't both slip under the cap.
+    const [group] = await tx
+      .select({ id: groups.id, currency: groups.currency })
+      .from(groups)
+      .where(eq(groups.linkToken, linkToken))
+      .for("update");
+    if (!group) return "group-unknown" as const;
+    const digits = currencyOf(group.currency).digits;
+
+    const amount = parseAmount(input.amount, digits);
+    if (amount === undefined) return "amount-unreadable" as const;
+    if (amount <= 0) return "amount-not-positive" as const;
+    if (amount > LIMITS.amountMajorUnits * 10 ** digits)
+      return "amount-too-large" as const;
+
+    const memberIds = new Set(
+      (
+        await tx
+          .select({ id: members.id })
+          .from(members)
+          .where(eq(members.groupId, group.id))
+      ).map((m) => m.id)
+    );
+    if (!memberIds.has(input.payerId)) return "payer-unknown" as const;
+    const participantIds = [...new Set(input.participantIds)];
+    if (participantIds.some((id) => !memberIds.has(id)))
+      return "participant-unknown" as const;
+    if (!participantIds.some((id) => id !== input.payerId))
+      return "participants-only-payer" as const;
+    if (amount < participantIds.length)
+      return "amount-too-small-to-split" as const;
+
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(expenses)
+      .where(eq(expenses.groupId, group.id));
+    if (count >= LIMITS.expenses) return "too-many-expenses" as const;
+
+    const [expense] = await tx
+      .insert(expenses)
+      .values({
+        groupId: group.id,
+        description,
+        amount,
+        date: input.date,
+        payerId: input.payerId,
+      })
+      .returning({ id: expenses.id });
+    await tx
+      .insert(expenseParticipants)
+      .values(
+        participantIds.map((memberId) => ({ expenseId: expense.id, memberId }))
+      );
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  const view = await readGroupView(db, linkToken);
+  if (!view) throw new Error("A group just written could not be read back.");
+  return { ok: true, view };
+}
+
 /** The group a link opens, or undefined when no group has that link. */
 export async function readGroupView(
   db: Db,
-  linkToken: string
+  linkToken: string,
+  { expenseLimit = EXPENSE_PAGE_SIZE }: { expenseLimit?: number } = {}
 ): Promise<GroupView | undefined> {
   const [group] = await db
     .select()
@@ -125,20 +255,86 @@ export async function readGroupView(
     .where(eq(members.groupId, group.id))
     .orderBy(asc(members.position));
 
-  const currency = findCurrency(group.currency);
-  if (!currency)
-    throw new Error(
-      `Group has a currency outside the table: ${group.currency}`
-    );
+  // Balances need every expense, so all are read; the view shows a page.
+  const expenseRows = await db
+    .select({
+      id: expenses.id,
+      description: expenses.description,
+      amount: expenses.amount,
+      date: expenses.date,
+      payerId: expenses.payerId,
+      version: expenses.version,
+    })
+    .from(expenses)
+    .where(eq(expenses.groupId, group.id))
+    .orderBy(desc(expenses.date), desc(expenses.createdAt), desc(expenses.id));
+  const participantRows = await db
+    .select({
+      expenseId: expenseParticipants.expenseId,
+      memberId: expenseParticipants.memberId,
+    })
+    .from(expenseParticipants)
+    .innerJoin(expenses, eq(expenses.id, expenseParticipants.expenseId))
+    .where(eq(expenses.groupId, group.id));
+  const participantIdsByExpense = new Map<string, string[]>();
+  for (const { expenseId, memberId } of participantRows) {
+    const ids = participantIdsByExpense.get(expenseId) ?? [];
+    ids.push(memberId);
+    participantIdsByExpense.set(expenseId, ids);
+  }
 
+  const money = computeGroupMoney({
+    members: memberRows,
+    expenses: expenseRows.map((e) => ({
+      id: e.id,
+      amount: e.amount,
+      payerId: e.payerId,
+      participantIds: participantIdsByExpense.get(e.id) ?? [],
+    })),
+    settlements: [],
+  });
+  const balanceById = new Map(
+    money.balances.map((b) => [b.memberId, b.balance])
+  );
+
+  const currency = currencyOf(group.currency);
   return {
     linkToken: group.linkToken,
     name: group.name,
     currency: currency.code,
     digits: currency.digits,
     version: group.version,
-    members: memberRows,
+    members: memberRows.map((m) => ({
+      ...m,
+      balance: balanceById.get(m.id) ?? 0,
+    })),
+    expenses: expenseRows.slice(0, expenseLimit).map((e) => ({
+      ...e,
+      shares: money.shares.get(e.id) ?? [],
+    })),
+    hasOlderExpenses: expenseRows.length > expenseLimit,
   };
+}
+
+function currencyOf(code: string): Currency {
+  const currency = findCurrency(code);
+  if (!currency)
+    throw new Error(`Group has a currency outside the table: ${code}`);
+  return currency;
+}
+
+/** Whether text is a real calendar date written YYYY-MM-DD. */
+function isCalendarDate(text: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    year >= 1 &&
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }
 
 function refuse<Reason extends string>(
