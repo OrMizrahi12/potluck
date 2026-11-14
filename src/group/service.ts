@@ -10,7 +10,11 @@ import {
 } from "../db/schema";
 import type { Db } from "../db/types";
 import { parseAmount } from "../money/amount";
-import { computeGroupMoney, type Share } from "../money/group-money";
+import {
+  computeGroupMoney,
+  type Share,
+  type SuggestedSettlement,
+} from "../money/group-money";
 import { LIMITS } from "./limits";
 
 // The group service: the one seam the pages call. Every command either
@@ -53,6 +57,11 @@ export type GroupView = {
   hasOlderExpenses: boolean;
   /** Newest first. */
   settlements: SettlementView[];
+  /**
+   * Settlements that would leave every member settled up, recomputed on every
+   * read and never stored. Empty when everyone is settled up.
+   */
+  suggestedSettlements: SuggestedSettlement[];
 };
 
 export type SettlementView = {
@@ -430,6 +439,7 @@ export async function readGroupView(
     })),
     hasOlderExpenses: expenseRows.length > expenseLimit,
     settlements: settlementRows,
+    suggestedSettlements: money.suggestedSettlements,
   };
 }
 

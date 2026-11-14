@@ -303,3 +303,131 @@ describe("add settlement refusals", () => {
     });
   }, 60_000);
 });
+
+describe("suggested settlements", () => {
+  // Ana paid ¥3000 for all three: Ana +2000, Ben −1000, Chloé −1000.
+  it("have every member who owes pay the member who is owed", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db, "JPY");
+
+    const result = await addExpense(db, linkToken, {
+      description: "Dinner",
+      amount: "3000",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben, chloe],
+    });
+
+    expect(result.ok && result.view.suggestedSettlements).toEqual([
+      { fromId: ben, toId: ana, amount: 1000 },
+      { fromId: chloe, toId: ana, amount: 1000 },
+    ]);
+  });
+
+  // Spec #1's known non-minimal case: balances +20, +40, +30, −50, −40 give 4
+  // suggestions, where three would do (Dee pays Ana 20 and Cy 30, Eli pays
+  // Ben 40). Greedy by hand: Dee (−50) pays
+  // Ben (+40) 40; Eli (−40) pays Cy (+30) 30; Dee and Eli now both owe 10 and
+  // Ana is owed 20, so Dee (earlier-created) pays Ana first, then Eli.
+  it("match the member who owes most with the member who is owed most, which may take more than the fewest", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Flat",
+      currency: "JPY",
+      memberNames: ["Ana", "Ben", "Cy", "Dee", "Eli"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+    const { linkToken } = created.view;
+    const [ana, ben, cy, dee, eli] = created.view.members.map((m) => m.id);
+    // Settlements that leave Ana +20, Ben +40, Cy +30, Dee −50, Eli −40.
+    for (const [fromId, toId, amount] of [
+      [ana, dee, "20"],
+      [ben, dee, "30"],
+      [ben, eli, "10"],
+      [cy, eli, "30"],
+    ]) {
+      await addSettlement(db, linkToken, {
+        fromId,
+        toId,
+        amount,
+        date: "2026-11-14",
+      });
+    }
+
+    const view = await readGroupView(db, linkToken);
+
+    expect(view?.members.map((m) => m.balance)).toEqual([20, 40, 30, -50, -40]);
+    expect(view?.suggestedSettlements).toEqual([
+      { fromId: dee, toId: ben, amount: 40 },
+      { fromId: eli, toId: cy, amount: 30 },
+      { fromId: dee, toId: ana, amount: 10 },
+      { fromId: eli, toId: ana, amount: 10 },
+    ]);
+  });
+
+  // Chloé paid ¥1000 for Ana, then Ben paid ¥1000 for Ana: Ana −2000, Ben
+  // +1000, Chloé +1000. Ben and Chloé tie, so Ben, created first, comes first,
+  // whatever order the expenses were added in.
+  it("break ties in favour of the earlier-created member, and are the same on every read", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db, "JPY");
+    await addExpense(db, linkToken, {
+      description: "Lunch",
+      amount: "1000",
+      date: "2026-11-14",
+      payerId: chloe,
+      participantIds: [ana],
+    });
+    await addExpense(db, linkToken, {
+      description: "Taxi",
+      amount: "1000",
+      date: "2026-11-14",
+      payerId: ben,
+      participantIds: [ana],
+    });
+
+    const first = await readGroupView(db, linkToken);
+    const second = await readGroupView(db, linkToken);
+
+    expect(first?.suggestedSettlements).toEqual([
+      { fromId: ana, toId: ben, amount: 1000 },
+      { fromId: ana, toId: chloe, amount: 1000 },
+    ]);
+    expect(second?.suggestedSettlements).toEqual(first?.suggestedSettlements);
+  });
+
+  // Ana paid ¥3000 for all three; Ben pays Ana ¥1000, which leaves Chloé
+  // owing Ana ¥1000; Chloé pays it, and everyone is settled up.
+  it("follow every settlement recorded, and are none once everyone is settled up", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db, "JPY");
+    await addExpense(db, linkToken, {
+      description: "Dinner",
+      amount: "3000",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben, chloe],
+    });
+
+    const afterBen = await addSettlement(db, linkToken, {
+      fromId: ben,
+      toId: ana,
+      amount: "1000",
+      date: "2026-11-15",
+    });
+    const afterChloe = await addSettlement(db, linkToken, {
+      fromId: chloe,
+      toId: ana,
+      amount: "1000",
+      date: "2026-11-15",
+    });
+
+    expect(afterBen.ok && afterBen.view.suggestedSettlements).toEqual([
+      { fromId: chloe, toId: ana, amount: 1000 },
+    ]);
+    expect(afterChloe.ok && afterChloe.view.suggestedSettlements).toEqual([]);
+    expect(
+      afterChloe.ok && afterChloe.view.members.map((m) => m.balance)
+    ).toEqual([0, 0, 0]);
+  });
+});
