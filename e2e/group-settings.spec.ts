@@ -157,3 +157,42 @@ test("manage members and currency, make a member inactive, then delete the group
     "browser errors"
   ).toEqual([]);
 });
+
+test("a group deleted from another device drops out of my groups once its link fails", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const name = `Ski chalet (${testInfo.project.name} ${Date.now()})`;
+  await createGroup(page, {
+    name,
+    currency: "EUR",
+    memberNames: ["Ana", "Ben"],
+  });
+  const groupLink = page.url();
+
+  // Another device opens the group, so it's in that device's list.
+  const other = await (await browser.newContext()).newPage();
+  await other.goto(groupLink);
+  await sayWhoYouAre(other, "Ben");
+  await other.goto("/");
+  const myGroups = other.getByRole("list", { name: "My groups" });
+  await expect(myGroups.getByRole("link", { name })).toBeVisible();
+
+  // The first device deletes the group.
+  await page.getByRole("link", { name: "Group settings" }).click();
+  await page.getByRole("button", { name: "Delete this group" }).click();
+  await page.getByRole("button", { name: "Delete for good" }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await myGroups.getByRole("link", { name }).click();
+  await expect(other.getByRole("heading", { level: 1 })).toHaveText(
+    "No group at this link"
+  );
+  await expect
+    .poll(() => other.evaluate(() => localStorage.getItem("potluck.device")))
+    .not.toContain(new URL(groupLink).pathname.slice(3));
+  await other.goto("/");
+  await expect(other.getByLabel("Group name")).toBeVisible();
+  await expect(other.getByRole("link", { name })).toHaveCount(0);
+  await other.context().close();
+});
