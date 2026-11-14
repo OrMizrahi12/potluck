@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { expectNoSidewaysScroll, screenshot, watchForErrors } from "./helpers";
 
 /** Creates a group through the home page's form and returns its link. */
 async function createGroup(
@@ -12,15 +13,19 @@ async function createGroup(
   await page.getByLabel("Member 2", { exact: true }).fill(group.memberNames[1]);
   await page.getByRole("button", { name: "Create group" }).click();
   await expect(page).toHaveURL(/\/g\/[A-Za-z0-9_-]{22,}$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(group.name);
   return page.url();
 }
 
-test("every page links to the privacy page", async ({ page }) => {
+test("every page links to the privacy page", async ({ page }, testInfo) => {
+  const errors = watchForErrors(page);
   const groupLink = await createGroup(page, {
     name: `Privacy link ${Date.now()}`,
     currency: "EUR",
     memberNames: ["Ana", "Ben"],
   });
+  await expectNoSidewaysScroll(page);
+  await screenshot(page, testInfo, "1-group-page-privacy-link");
 
   for (const path of [
     "/",
@@ -33,6 +38,12 @@ test("every page links to the privacy page", async ({ page }) => {
     await expect(page, `from ${path}`).toHaveURL(/\/privacy$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Privacy");
   }
+
+  // The link no group has answers 404, and the browser reports that status.
+  expect(
+    errors.filter((e) => !e.includes("status of 404 (Not Found)")),
+    "browser errors"
+  ).toEqual([]);
 });
 
 test("a visit asks nothing of other sites and sets no cookies", async ({
@@ -80,8 +91,12 @@ test("a group page asks search engines not to list it", async ({ page }) => {
 
 test("the privacy page says what's stored and that the link is the key", async ({
   page,
-}) => {
+}, testInfo) => {
+  const errors = watchForErrors(page);
   await page.goto("/privacy");
+  await expectNoSidewaysScroll(page);
+  await screenshot(page, testInfo, "2-privacy-page");
+  expect(errors, "browser errors").toEqual([]);
 
   const main = page.getByRole("main");
   await expect(main).toContainText("What Potluck stores");
