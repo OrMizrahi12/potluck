@@ -2,21 +2,20 @@
 
 import { redirect } from "next/navigation";
 import { getDb } from "@/db/client";
-import { addSettlement, type AddSettlementRefusal } from "@/group/service";
-
-export type AddSettlementFormState = { refusal?: AddSettlementRefusal };
+import { addSettlement } from "@/group/service";
+import { readSettlementForm } from "../read-settlement-form";
+import type { SettlementFormState } from "../settlement-form";
 
 export async function addSettlementAction(
   linkToken: string,
-  _previous: AddSettlementFormState,
+  _previous: SettlementFormState,
   form: FormData
-): Promise<AddSettlementFormState> {
-  const result = await addSettlement(getDb(), linkToken, {
-    fromId: String(form.get("from") ?? ""),
-    toId: String(form.get("to") ?? ""),
-    amount: String(form.get("amount") ?? ""),
-    date: String(form.get("date") ?? ""),
-  });
+): Promise<SettlementFormState> {
+  const result = await addSettlement(
+    getDb(),
+    linkToken,
+    readSettlementForm(form)
+  );
   if (!result.ok) return { refusal: result.reason };
   redirect(`/g/${linkToken}`);
 }

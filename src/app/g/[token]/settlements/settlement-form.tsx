@@ -2,10 +2,17 @@
 
 import { useActionState, useState, useSyncExternalStore } from "react";
 import { LIMITS } from "@/group/limits";
-import type { AddSettlementRefusal } from "@/group/service";
-import type { AddSettlementFormState } from "./actions";
+import type {
+  AddSettlementRefusal,
+  EditSettlementRefusal,
+} from "@/group/service";
+import { Refusal, STALE_MESSAGE } from "../refusal";
 
 type Member = { id: string; name: string };
+
+export type SettlementFormState = {
+  refusal?: AddSettlementRefusal | EditSettlementRefusal;
+};
 
 const noSubscription = () => () => {};
 
@@ -22,12 +29,16 @@ function example(digits: number): string {
 }
 
 function message(
-  refusal: AddSettlementRefusal,
+  refusal: NonNullable<SettlementFormState["refusal"]>,
   { currency, digits }: { currency: string; digits: number }
 ): string {
   switch (refusal) {
     case "group-unknown":
       return "This group doesn't exist any more.";
+    case "settlement-unknown":
+      return "This settlement has been deleted.";
+    case "stale-version":
+      return STALE_MESSAGE;
     case "amount-unreadable":
       return digits === 0
         ? `Type the amount as a whole number, like ${example(0)}.`
@@ -52,6 +63,7 @@ function message(
 /**
  * Records that one member paid another. A suggested settlement opens it with
  * `from`, `to` and `amount` filled in, all of which can still be changed.
+ * With `editing`, it edits a recorded settlement whose `initial` has a date.
  */
 export function SettlementForm({
   action,
@@ -59,31 +71,34 @@ export function SettlementForm({
   digits,
   members,
   initial,
+  editing = false,
 }: {
   action: (
-    previous: AddSettlementFormState,
+    previous: SettlementFormState,
     form: FormData
-  ) => Promise<AddSettlementFormState>;
+  ) => Promise<SettlementFormState>;
   currency: string;
   digits: number;
   members: Member[];
-  /** The amount is as typed: "12.34". */
-  initial: { fromId: string; toId: string; amount: string };
+  /** The amount is as typed: "12.34". Without a date, it's today. */
+  initial: { fromId: string; toId: string; amount: string; date?: string };
+  editing?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled, so a refused submission keeps what was typed.
   const [fromId, setFromId] = useState(initial.fromId);
   const [toId, setToId] = useState(initial.toId);
   const [amount, setAmount] = useState(initial.amount);
-  // The date defaults to today where the member is, which only the browser knows.
-  const [date, setDate] = useState<string>();
+  // A new settlement's date defaults to today where the member is, which only
+  // the browser knows.
+  const [date, setDate] = useState(initial.date);
   const todayHere = useSyncExternalStore(noSubscription, today, () => "");
 
   return (
     <form
       action={formAction}
       className="stack"
-      aria-label="Record a settlement"
+      aria-label={editing ? "Edit the settlement" : "Record a settlement"}
     >
       <label className="field">
         <span>From</span>
@@ -147,12 +162,19 @@ export function SettlementForm({
         />
       </label>
 
-      <p role="alert" className="error">
-        {state.refusal && message(state.refusal, { currency, digits })}
-      </p>
+      <Refusal
+        text={state.refusal && message(state.refusal, { currency, digits })}
+        reload={state.refusal === "stale-version"}
+      />
 
       <button type="submit" disabled={pending}>
-        {pending ? "Recording…" : "Record settlement"}
+        {editing
+          ? pending
+            ? "Saving…"
+            : "Save changes"
+          : pending
+            ? "Recording…"
+            : "Record settlement"}
       </button>
     </form>
   );

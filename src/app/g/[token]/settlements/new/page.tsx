@@ -6,7 +6,7 @@ import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { minorToDecimal, parseAmount } from "@/money/amount";
 import { addSettlementAction } from "./actions";
-import { SettlementForm } from "./settlement-form";
+import { SettlementForm } from "../settlement-form";
 
 export const metadata: Metadata = {
   title: "Record a settlement · Potluck",

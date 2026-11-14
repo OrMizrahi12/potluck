@@ -2,10 +2,16 @@
 
 import { useActionState, useState, useSyncExternalStore } from "react";
 import { LIMITS } from "@/group/limits";
-import type { AddExpenseRefusal } from "@/group/service";
-import type { AddExpenseFormState } from "./actions";
+import type { AddExpenseRefusal, EditExpenseRefusal } from "@/group/service";
+import { Refusal, STALE_MESSAGE } from "../refusal";
 
 type Member = { id: string; name: string; active: boolean };
+
+export type ExpenseFormState = {
+  refusal?: AddExpenseRefusal | EditExpenseRefusal;
+  /** How many participants were chosen, for "too small to split among N". */
+  participants?: number;
+};
 
 const noSubscription = () => () => {};
 
@@ -22,7 +28,7 @@ function example(digits: number): string {
 }
 
 function message(
-  refusal: AddExpenseRefusal,
+  refusal: NonNullable<ExpenseFormState["refusal"]>,
   {
     currency,
     digits,
@@ -36,6 +42,10 @@ function message(
   switch (refusal) {
     case "group-unknown":
       return "This group doesn't exist any more.";
+    case "expense-unknown":
+      return "This expense has been deleted.";
+    case "stale-version":
+      return STALE_MESSAGE;
     case "description-missing":
       return "Say what the expense was for.";
     case "description-too-long":
@@ -63,30 +73,48 @@ function message(
   }
 }
 
+/**
+ * Adds an expense, or edits one when `initial` holds it. The amount is as
+ * typed: "12.34". Without `initial`, active members are the participants and
+ * the date is today.
+ */
 export function ExpenseForm({
   action,
   currency,
   digits,
   members,
+  initial,
 }: {
   action: (
-    previous: AddExpenseFormState,
+    previous: ExpenseFormState,
     form: FormData
-  ) => Promise<AddExpenseFormState>;
+  ) => Promise<ExpenseFormState>;
   currency: string;
   digits: number;
   members: Member[];
+  initial?: {
+    description: string;
+    amount: string;
+    date: string;
+    payerId: string;
+    participantIds: string[];
+  };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled, so a refused submission keeps what was typed.
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [payerId, setPayerId] = useState("");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const [payerId, setPayerId] = useState(initial?.payerId ?? "");
   const [participantIds, setParticipantIds] = useState(
-    () => new Set(members.filter((m) => m.active).map((m) => m.id))
+    () =>
+      new Set(
+        initial?.participantIds ??
+          members.filter((m) => m.active).map((m) => m.id)
+      )
   );
-  // The date defaults to today where the member is, which only the browser knows.
-  const [date, setDate] = useState<string>();
+  // A new expense's date defaults to today where the member is, which only
+  // the browser knows.
+  const [date, setDate] = useState(initial?.date);
   const todayHere = useSyncExternalStore(noSubscription, today, () => "");
 
   function toggle(id: string, checked: boolean) {
@@ -96,8 +124,13 @@ export function ExpenseForm({
     setParticipantIds(next);
   }
 
+  const editing = initial !== undefined;
   return (
-    <form action={formAction} className="stack" aria-label="Add an expense">
+    <form
+      action={formAction}
+      className="stack"
+      aria-label={editing ? "Edit the expense" : "Add an expense"}
+    >
       <label className="field">
         <span>Description</span>
         <input
@@ -169,17 +202,26 @@ export function ExpenseForm({
         ))}
       </fieldset>
 
-      <p role="alert" className="error">
-        {state.refusal &&
+      <Refusal
+        text={
+          state.refusal &&
           message(state.refusal, {
             currency,
             digits,
             participants: state.participants ?? 0,
-          })}
-      </p>
+          })
+        }
+        reload={state.refusal === "stale-version"}
+      />
 
       <button type="submit" disabled={pending}>
-        {pending ? "Adding…" : "Add expense"}
+        {editing
+          ? pending
+            ? "Saving…"
+            : "Save changes"
+          : pending
+            ? "Adding…"
+            : "Add expense"}
       </button>
     </form>
   );

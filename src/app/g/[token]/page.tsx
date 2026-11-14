@@ -104,6 +104,7 @@ async function Group({ token, shown }: { token: string; shown: number }) {
               nameOf={nameOf}
               money={money}
               locale={locale}
+              editHref={`/g/${token}/expenses/${expense.id}`}
             />
           ))}
         </ul>
@@ -130,7 +131,13 @@ async function Group({ token, shown }: { token: string; shown: number }) {
                 <span className="name">{nameOf.get(s.toId)}</span>{" "}
                 <span className="amount">{money(s.amount)}</span>
               </span>{" "}
-              <span className="muted">{formatDate(s.date, locale)}</span>
+              <span className="muted">{formatDate(s.date, locale)}</span>{" "}
+              <Link
+                href={`/g/${token}/settlements/${s.id}`}
+                aria-label={`Edit the settlement from ${nameOf.get(s.fromId)} to ${nameOf.get(s.toId)}`}
+              >
+                Edit
+              </Link>
             </li>
           ))}
         </ul>
@@ -159,11 +166,13 @@ function Expense({
   nameOf,
   money,
   locale,
+  editHref,
 }: {
   expense: GroupView["expenses"][number];
   nameOf: Map<string, string>;
   money: (minor: number) => string;
   locale: string;
+  editHref: string;
 }) {
   return (
     <li aria-label={expense.description}>
@@ -173,7 +182,10 @@ function Expense({
       </div>
       <p className="muted">
         Paid by {nameOf.get(expense.payerId)} ·{" "}
-        {formatDate(expense.date, locale)}
+        {formatDate(expense.date, locale)} ·{" "}
+        <Link href={editHref} aria-label={`Edit ${expense.description}`}>
+          Edit
+        </Link>
       </p>
       <ul className="shares" aria-label="Shares">
         {expense.shares.map((s) => (
