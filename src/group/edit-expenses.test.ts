@@ -146,6 +146,58 @@ describe("edit expense", () => {
       }))
     );
   });
+
+  // The logic prototype's "editing moves the cent": 10.00 among Ana, Ben and
+  // Cai leaves 1 leftover cent. Swapping Ben for Dee, then making it 10.01,
+  // moves the leftover units around; editing it back to 10.00 among Ana, Ben
+  // and Cai gives back exactly the first shares, since the expense's id never
+  // changes and shares depend only on the expense.
+  it("gives back the same shares once an edit is undone", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Flat",
+      currency: "USD",
+      memberNames: ["Ana", "Ben", "Cai", "Dee"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+    const { linkToken } = created.view;
+    const [ana, ben, cai, dee] = created.view.members.map((m) => m.id);
+    const pizza = {
+      description: "Pizza",
+      amount: "10.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben, cai],
+    };
+    const added = await addExpense(db, linkToken, pizza);
+    if (!added.ok) throw new Error(added.reason);
+    const [first] = added.view.expenses;
+
+    await editExpense(db, linkToken, {
+      ...pizza,
+      participantIds: [ana, cai, dee],
+      expenseId: first.id,
+      version: 1,
+    });
+    await editExpense(db, linkToken, {
+      ...pizza,
+      amount: "10.01",
+      participantIds: [ana, cai, dee],
+      expenseId: first.id,
+      version: 2,
+    });
+    const undone = await editExpense(db, linkToken, {
+      ...pizza,
+      expenseId: first.id,
+      version: 3,
+    });
+
+    if (!undone.ok) throw new Error(`refused: ${undone.reason}`);
+    expect(undone.view.expenses[0]).toEqual({ ...first, version: 4 });
+    expect(undone.view.members.map((m) => m.balance)).toEqual(
+      added.view.members.map((m) => m.balance)
+    );
+  });
 });
 
 describe("edit expense refusals", () => {
