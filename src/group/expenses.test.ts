@@ -227,6 +227,9 @@ describe("amounts", () => {
   it.each([
     ["JPY", "1000.5"],
     ["JPY", "1,000"],
+    // A comma before three digits may be a thousands separator: ambiguous.
+    ["BHD", "1,000"],
+    ["CLF", "1,000"],
     ["USD", "12.345"],
     ["BHD", "1.2345"],
     ["USD", "1,234.56"],

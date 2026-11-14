@@ -5,23 +5,21 @@
  *
  * Accepts an optional minus sign (so a negative amount can be refused as
  * such), whole digits, and an optional "." or "," followed by at most `digits`
- * fraction digits. No grouping separators. A whole part longer than
- * `maxWholeDigits` (leading zeros aside) is reported as `Infinity`, so a
+ * fraction digits. No grouping separators: a "," before exactly three digits
+ * could be one ("1,000"), so it's refused rather than guessed. A whole part
+ * longer than 12 digits (leading zeros aside) is reported as `Infinity`, so a
  * caller can refuse it as too large without the number losing precision.
  */
-export function parseAmount(
-  text: string,
-  digits: number,
-  maxWholeDigits = 12
-): number | undefined {
-  const match = /^(-?)(\d*)(?:[.,](\d*))?$/.exec(text.trim());
+export function parseAmount(text: string, digits: number): number | undefined {
+  const match = /^(-?)(\d*)(?:([.,])(\d*))?$/.exec(text.trim());
   if (!match) return undefined;
-  const [, minus, whole, fraction = ""] = match;
+  const [, minus, whole, separator, fraction = ""] = match;
   if (whole === "" && fraction === "") return undefined;
   if (fraction.length > digits) return undefined;
+  if (separator === "," && fraction.length === 3) return undefined;
 
   const significantWhole = whole.replace(/^0+/, "");
-  if (significantWhole.length > maxWholeDigits) {
+  if (significantWhole.length > 12) {
     return minus ? -Infinity : Infinity;
   }
   const minor =
