@@ -2,7 +2,7 @@
 
 ## code-review skill
 
-`.claude/skills/code-review/` (`SKILL.md` and `agents/openai.yaml`) is copied from `skills/engineering/code-review/` in [mattpocock/skills](https://github.com/mattpocock/skills), pinned to commit `49dd158d1076134a641b33efb035946536778336` (recorded in `skills-lock.json`).
+`.claude/skills/code-review/` (`SKILL.md` and `agents/openai.yaml`) is copied from `skills/engineering/code-review/` in [mattpocock/skills](https://github.com/mattpocock/skills), pinned to commit `5863806dd4e15c63174bee4e7515a4256792ecfa` (recorded in `skills-lock.json`).
 
 Our one change: the Standards and Spec sub-agent briefs in `SKILL.md` each end with "Do not invoke `/code-review` or spawn additional agents: perform this review directly."
 
