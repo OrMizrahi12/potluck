@@ -607,20 +607,19 @@ export async function changeCurrency(
     if (!group) return "group-unknown" as const;
     if (group.version !== input.version) return "stale-version" as const;
 
-    const entries = await Promise.all([
-      tx
-        .select({ id: expenses.id })
-        .from(expenses)
-        .where(eq(expenses.groupId, group.id))
-        .limit(1),
-      tx
-        .select({ id: settlements.id })
-        .from(settlements)
-        .where(eq(settlements.groupId, group.id))
-        .limit(1),
-    ]);
-    if (entries.some((rows) => rows.length > 0))
-      return "group-has-entries" as const;
+    // One query at a time: a transaction's single client can't run two at once.
+    const anExpense = await tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.groupId, group.id))
+      .limit(1);
+    if (anExpense.length > 0) return "group-has-entries" as const;
+    const aSettlement = await tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(eq(settlements.groupId, group.id))
+      .limit(1);
+    if (aSettlement.length > 0) return "group-has-entries" as const;
 
     await tx
       .update(groups)
@@ -750,27 +749,27 @@ export async function deleteMember(
     const found = await lockMember(tx, linkToken, input);
     if (typeof found === "string") return found;
 
-    const references = await Promise.all([
-      tx
-        .select({ id: expenses.id })
-        .from(expenses)
-        .where(eq(expenses.payerId, found.id))
-        .limit(1),
-      tx
-        .select({ id: expenseParticipants.expenseId })
-        .from(expenseParticipants)
-        .where(eq(expenseParticipants.memberId, found.id))
-        .limit(1),
-      tx
-        .select({ id: settlements.id })
-        .from(settlements)
-        .where(
-          or(eq(settlements.fromId, found.id), eq(settlements.toId, found.id))
-        )
-        .limit(1),
-    ]);
-    if (references.some((rows) => rows.length > 0))
-      return "member-referenced" as const;
+    // One query at a time: a transaction's single client can't run two at once.
+    const asPayer = await tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.payerId, found.id))
+      .limit(1);
+    if (asPayer.length > 0) return "member-referenced" as const;
+    const aShare = await tx
+      .select({ id: expenseParticipants.expenseId })
+      .from(expenseParticipants)
+      .where(eq(expenseParticipants.memberId, found.id))
+      .limit(1);
+    if (aShare.length > 0) return "member-referenced" as const;
+    const inASettlement = await tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(
+        or(eq(settlements.fromId, found.id), eq(settlements.toId, found.id))
+      )
+      .limit(1);
+    if (inASettlement.length > 0) return "member-referenced" as const;
 
     await tx.delete(members).where(eq(members.id, found.id));
     return undefined;
