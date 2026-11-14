@@ -381,6 +381,53 @@ export async function addMember(
   return { ok: true, view: await readBack(db, linkToken) };
 }
 
+export type ChangeCurrencyRefusal =
+  "group-unknown" | "stale-version" | "currency-unknown" | "group-has-entries";
+
+/**
+ * Changes the group's currency, only while it has no expenses and no
+ * settlements, so existing amounts never silently change meaning.
+ * `version` is the group's, as the page last saw it.
+ */
+export async function changeCurrency(
+  db: Db,
+  linkToken: string,
+  input: { version: number; currency: string }
+): Promise<CommandResult<ChangeCurrencyRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!findCurrency(input.currency)) return refuse("currency-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    if (group.version !== input.version) return "stale-version" as const;
+
+    const entries = await Promise.all([
+      tx
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(eq(expenses.groupId, group.id))
+        .limit(1),
+      tx
+        .select({ id: settlements.id })
+        .from(settlements)
+        .where(eq(settlements.groupId, group.id))
+        .limit(1),
+    ]);
+    if (entries.some((rows) => rows.length > 0))
+      return "group-has-entries" as const;
+
+    await tx
+      .update(groups)
+      .set({ currency: input.currency, version: sql`${groups.version} + 1` })
+      .where(eq(groups.id, group.id));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
 /** Which member a member command acts on, and the version the page last saw. */
 export type MemberRef = { memberId: string; version: number };
 
