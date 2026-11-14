@@ -67,3 +67,50 @@ test("create a group, copy its link, open it and see the members", async ({
     []
   );
 });
+
+test("creating a group while offline shows an error and keeps the form", async ({
+  page,
+  context,
+}, testInfo) => {
+  const groupName = `Offline ${Date.now()}`;
+  const errors = watchForErrors(page);
+
+  await test.step("fill in the group", async () => {
+    await page.goto("/");
+    await page.getByLabel("Group name").fill(groupName);
+    await page.getByLabel("Currency").selectOption("EUR");
+    await page.getByLabel("Member 1", { exact: true }).fill("Ana");
+    await page.getByLabel("Member 2", { exact: true }).fill("Ben");
+  });
+
+  await test.step("create it while offline and see the form kept", async () => {
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "Create group" }).click();
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+      "Couldn't reach Potluck, so the group wasn't created. Check your connection and try again."
+    );
+    await expect(page.getByLabel("Group name")).toHaveValue(groupName);
+    await expect(page.getByLabel("Currency")).toHaveValue("EUR");
+    await expect(page.getByLabel("Member 1", { exact: true })).toHaveValue(
+      "Ana"
+    );
+    await expect(page.getByLabel("Member 2", { exact: true })).toHaveValue(
+      "Ben"
+    );
+    await expectNoSidewaysScroll(page);
+    await screenshot(page, testInfo, "1-offline-error-form-kept");
+  });
+
+  await test.step("try again once back online", async () => {
+    await context.setOffline(false);
+    await page.getByRole("button", { name: "Create group" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(groupName);
+  });
+
+  // The browser reports the request it couldn't send; that one is the point.
+  expect(
+    errors.filter((e) => !e.includes("net::ERR_INTERNET_DISCONNECTED")),
+    "browser errors"
+  ).toEqual([]);
+});
