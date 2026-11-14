@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { unstable_rethrow } from "next/navigation";
+import { startTransition, useActionState, useState } from "react";
 import { CURRENCIES } from "@/currency/currencies";
 import { LIMITS } from "@/group/limits";
 import type { CreateGroupRefusal } from "@/group/service";
-import { createGroupAction, type CreateGroupFormState } from "./actions";
+import { createGroupAction } from "./actions";
 
 const {
   groupNameLength: GROUP_NAME_LENGTH,
@@ -12,7 +13,12 @@ const {
   members: MAX_MEMBERS,
 } = LIMITS;
 
-const MESSAGES: Record<CreateGroupRefusal, string> = {
+/** Why a submission didn't create the group: the service refused it, or it never reached the server. */
+type Problem = CreateGroupRefusal | "unreachable";
+
+const MESSAGES: Record<Problem, string> = {
+  unreachable:
+    "Couldn't reach Potluck, so the group wasn't created. Check your connection and try again.",
   "group-name-missing": "Give the group a name.",
   "group-name-too-long": `Keep the group name to ${GROUP_NAME_LENGTH} characters.`,
   "currency-unknown": "Pick a currency from the list.",
@@ -26,12 +32,30 @@ const MESSAGES: Record<CreateGroupRefusal, string> = {
 
 type Row = { key: number; name: string };
 
+type FormState = { problem?: Problem };
+
+/**
+ * Sends the form to the server. A call that never reaches it (the device is
+ * offline, or the connection dropped) rejects; that becomes an error shown on
+ * the form instead of the error page, so nothing typed is lost. A redirect
+ * after a successful create is Next's to handle, so it's rethrown.
+ */
+async function send(_previous: FormState, form: FormData): Promise<FormState> {
+  try {
+    const { refusal } = await createGroupAction({}, form);
+    return { problem: refusal };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { problem: "unreachable" };
+  }
+}
+
 export function CreateGroupForm() {
-  const [state, formAction, pending] = useActionState<
-    CreateGroupFormState,
-    FormData
-  >(createGroupAction, {});
-  // Controlled, so a refused submission keeps what was typed.
+  const [state, formAction, pending] = useActionState<FormState, FormData>(
+    send,
+    {}
+  );
+  // Controlled, so a refused or unsent submission keeps what was typed.
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
   const [rows, setRows] = useState<Row[]>([
@@ -46,7 +70,16 @@ export function CreateGroupForm() {
   }
 
   return (
-    <form action={formAction} className="stack">
+    <form
+      className="stack"
+      // Not `action=`: React resets a form after its action, which empties
+      // the currency select even though it's controlled.
+      onSubmit={(e) => {
+        e.preventDefault();
+        const form = new FormData(e.currentTarget);
+        startTransition(() => formAction(form));
+      }}
+    >
       <label className="field">
         <span>Group name</span>
         <input
@@ -118,7 +151,7 @@ export function CreateGroupForm() {
       </fieldset>
 
       <p role="alert" className="error">
-        {state.refusal && MESSAGES[state.refusal]}
+        {state.problem && MESSAGES[state.problem]}
       </p>
 
       <button type="submit" disabled={pending}>
