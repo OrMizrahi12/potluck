@@ -93,3 +93,30 @@ test("create a group, copy its link, open it and see the members", async ({
     []
   );
 });
+
+test("creating a group while offline shows an error and keeps the form", async ({
+  page,
+  context,
+}) => {
+  const groupName = `Offline ${Date.now()}`;
+  await page.goto("/");
+  await page.getByLabel("Group name").fill(groupName);
+  await page.getByLabel("Currency").selectOption("EUR");
+  await page.getByLabel("Member 1", { exact: true }).fill("Ana");
+  await page.getByLabel("Member 2", { exact: true }).fill("Ben");
+
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Create group" }).click();
+
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+    "Couldn't reach Potluck, so the group wasn't created. Check your connection and try again."
+  );
+  await expect(page.getByLabel("Group name")).toHaveValue(groupName);
+  await expect(page.getByLabel("Currency")).toHaveValue("EUR");
+  await expect(page.getByLabel("Member 1", { exact: true })).toHaveValue("Ana");
+  await expect(page.getByLabel("Member 2", { exact: true })).toHaveValue("Ben");
+
+  await context.setOffline(false);
+  await page.getByRole("button", { name: "Create group" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(groupName);
+});

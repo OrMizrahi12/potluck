@@ -5,7 +5,7 @@ import { startTransition, useActionState, useState } from "react";
 import { CURRENCIES } from "@/currency/currencies";
 import { LIMITS } from "@/group/limits";
 import type { CreateGroupRefusal } from "@/group/service";
-import { createGroupAction, type CreateGroupFormState } from "./actions";
+import { createGroupAction } from "./actions";
 
 const {
   groupNameLength: GROUP_NAME_LENGTH,
@@ -13,7 +13,12 @@ const {
   members: MAX_MEMBERS,
 } = LIMITS;
 
-const MESSAGES: Record<CreateGroupRefusal, string> = {
+/** Why a submission didn't create the group: the service refused it, or it never reached the server. */
+type Problem = CreateGroupRefusal | "unreachable";
+
+const MESSAGES: Record<Problem, string> = {
+  unreachable:
+    "Couldn't reach Potluck, so the group wasn't created. Check your connection and try again.",
   "group-name-missing": "Give the group a name.",
   "group-name-too-long": `Keep the group name to ${GROUP_NAME_LENGTH} characters.`,
   "currency-unknown": "Pick a currency from the list.",
@@ -25,12 +30,9 @@ const MESSAGES: Record<CreateGroupRefusal, string> = {
   "too-many-members": `A group can have at most ${MAX_MEMBERS} members.`,
 };
 
-const UNREACHABLE =
-  "Couldn't reach Potluck, so the group wasn't created. Check your connection and try again.";
-
 type Row = { key: number; name: string };
 
-type FormState = CreateGroupFormState & { unreachable?: true };
+type FormState = { problem?: Problem };
 
 /**
  * Sends the form to the server. A call that never reaches it (the device is
@@ -38,12 +40,13 @@ type FormState = CreateGroupFormState & { unreachable?: true };
  * the form instead of the error page, so nothing typed is lost. A redirect
  * after a successful create is Next's to handle, so it's rethrown.
  */
-async function send(previous: FormState, form: FormData): Promise<FormState> {
+async function send(_previous: FormState, form: FormData): Promise<FormState> {
   try {
-    return await createGroupAction(previous, form);
+    const { refusal } = await createGroupAction({}, form);
+    return { problem: refusal };
   } catch (error) {
     unstable_rethrow(error);
-    return { unreachable: true };
+    return { problem: "unreachable" };
   }
 }
 
@@ -148,9 +151,7 @@ export function CreateGroupForm() {
       </fieldset>
 
       <p role="alert" className="error">
-        {state.unreachable
-          ? UNREACHABLE
-          : state.refusal && MESSAGES[state.refusal]}
+        {state.problem && MESSAGES[state.problem]}
       </p>
 
       <button type="submit" disabled={pending}>
