@@ -126,6 +126,17 @@ export function rememberGroup(group: DeviceGroup) {
   }));
 }
 
+/** Forgets everything this device knows about a group, once it's been deleted. */
+export function forgetGroup(token: string) {
+  update((saved) => ({
+    groups: saved.groups.filter((g) => g.token !== token),
+    claims: Object.fromEntries(
+      Object.entries(saved.claims).filter(([t]) => t !== token)
+    ),
+    skipped: saved.skipped.filter((t) => t !== token),
+  }));
+}
+
 /** Records which member this device is in the group. */
 export function claimMember(token: string, memberId: string) {
   update((saved) => ({

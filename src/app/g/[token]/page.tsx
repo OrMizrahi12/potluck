@@ -55,7 +55,8 @@ async function Group({ token, shown }: { token: string; shown: number }) {
       />
       <p>
         Currency: {group.currency}
-        {currency && ` · ${currency.name}`}
+        {currency && ` · ${currency.name}`} ·{" "}
+        <Link href={`/g/${token}/settings`}>Group settings</Link>
       </p>
 
       <div className="actions">
