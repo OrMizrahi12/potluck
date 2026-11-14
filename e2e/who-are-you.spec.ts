@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   createGroup,
   expectNoSidewaysScroll,
+  sayWhoYouAre,
   screenshot,
   watchForErrors,
 } from "./helpers";
@@ -52,6 +53,47 @@ test("open a group, say who you are, find yourself as payer and return from my g
     await expect(
       page.getByRole("region", { name: "Who are you?" })
     ).toBeHidden();
+  });
+
+  expect(errors, "browser errors").toEqual([]);
+});
+
+test("change who you are from the menu, separately in each group", async ({
+  page,
+}, testInfo) => {
+  const errors = watchForErrors(page);
+  const you = page.getByRole("region", { name: "You in this group" });
+
+  await createGroup(page, {
+    name: `Ski chalet (${testInfo.project.name} ${Date.now()})`,
+    currency: "EUR",
+    memberNames: ["Ana", "Ben"],
+  });
+  const chalet = page.url();
+  await sayWhoYouAre(page, "Ana");
+  await expect(you).toContainText("You are Ana.");
+
+  await test.step("change to another member", async () => {
+    await you.getByRole("button", { name: "Change" }).click();
+    await expectNoSidewaysScroll(page);
+    await screenshot(page, testInfo, "5-change-who-you-are");
+    await you.getByRole("button", { name: "Ben" }).click();
+    await expect(you).toContainText("You are Ben.");
+    await page.reload();
+    await expect(you).toContainText("You are Ben.");
+  });
+
+  await test.step("another group asks again and keeps its own answer", async () => {
+    await createGroup(page, {
+      name: `Book club (${testInfo.project.name} ${Date.now()})`,
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
+    });
+    await sayWhoYouAre(page, "Ana");
+    await expect(you).toContainText("You are Ana.");
+
+    await page.goto(chalet);
+    await expect(you).toContainText("You are Ben.");
   });
 
   expect(errors, "browser errors").toEqual([]);

@@ -237,3 +237,16 @@ a.button.secondary {
   overflow-wrap: anywhere;
   padding: 0.25rem 0;
 }
+
+.you {
+  margin: 1rem 0;
+}
+
+.you p {
+  flex: 1;
+  margin: 0;
+}
+
+.choices button[aria-pressed="true"] {
+  font-weight: 600;
+}

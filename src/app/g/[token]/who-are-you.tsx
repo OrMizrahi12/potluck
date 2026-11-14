@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   claimMember,
   rememberGroup,
@@ -11,12 +11,16 @@ import {
 type Member = { id: string; name: string };
 
 /** One button per member; choosing one makes it this device's member in the group. */
-export function MemberChoice({
+function MemberChoice({
   token,
   members,
+  current,
+  onChosen,
 }: {
   token: string;
   members: Member[];
+  current?: string;
+  onChosen?: () => void;
 }) {
   return (
     <div className="choices">
@@ -25,7 +29,11 @@ export function MemberChoice({
           key={m.id}
           type="button"
           className="secondary"
-          onClick={() => claimMember(token, m.id)}
+          aria-pressed={current === undefined ? undefined : m.id === current}
+          onClick={() => {
+            claimMember(token, m.id);
+            onChosen?.();
+          }}
         >
           {m.name}
         </button>
@@ -85,12 +93,59 @@ export function WhoAreYou({
     token,
     members.map((m) => m.id)
   );
-  if (!claim || claim.claimed || claim.skipped) return null;
+  if (!claim) return null;
+  if (!claim.claimed && !claim.skipped)
+    return (
+      <WhoAreYouPrompt token={token} members={members} skippable>
+        Pick your name so Potluck can fill you in as the payer and show what you
+        owe or are owed. It&apos;s only remembered on this device.
+      </WhoAreYouPrompt>
+    );
 
   return (
-    <WhoAreYouPrompt token={token} members={members} skippable>
-      Pick your name so Potluck can fill you in as the payer and show what you
-      owe or are owed. It&apos;s only remembered on this device.
-    </WhoAreYouPrompt>
+    <YouMenu
+      token={token}
+      members={members}
+      you={members.find((m) => m.id === claim.claimed)}
+    />
+  );
+}
+
+/** Who this device is in the group, with a menu to change it at any time. */
+function YouMenu({
+  token,
+  members,
+  you,
+}: {
+  token: string;
+  members: Member[];
+  you: Member | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="you stack" aria-label="You in this group">
+      <div className="row">
+        <p className="name">
+          {you ? `You are ${you.name}.` : "You haven't said who you are."}
+        </p>
+        <button
+          type="button"
+          className="secondary"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {you ? "Change" : "Say who you are"}
+        </button>
+      </div>
+      {open && (
+        <MemberChoice
+          token={token}
+          members={members}
+          current={you?.id}
+          onChosen={() => setOpen(false)}
+        />
+      )}
+    </section>
   );
 }
