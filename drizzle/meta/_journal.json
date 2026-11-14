@@ -15,6 +15,13 @@
       "when": 1794574223630,
       "tag": "0001_groups_and_members",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794660910576,
+      "tag": "0002_expenses",
+      "breakpoints": true
     }
   ]
 }
