@@ -9,18 +9,20 @@ A change is verified when a browser test walks it in the running app, has gone *
 
 ## 1. Run the app from this worktree
 
-The server on port 3000 is the developer's, serving whichever checkout they started it from, not your change. Start your own:
+The server on port 3000 is the developer's, serving whichever checkout they started it from, not your change. Start your own, on this worktree's database and port:
 
 ```sh
-npm install                     # a fresh worktree has no node_modules
-cp -n .env.example .env.local   # .env* is gitignored, so the worktree has none
-npm run db:migrate              # the local `potluck` database is shared by every checkout
-npm run dev -- --port 3100      # in the background
+npm run setup:worktree   # once per worktree; prints its database and port
+npm run dev              # in the background; serves on PORT from .env.local
 ```
 
-Your server logs to this worktree's `.data/logs/dev-latest.log`.
+Your server logs to this worktree's `.data/logs/dev-latest.log`. Below, `$PORT` is its port:
 
-Done when `curl -s -o /dev/null -w '%{http_code}' localhost:3100/api/health` prints `200`.
+```sh
+export PORT=$(grep ^PORT= .env.local | cut -d= -f2)
+```
+
+Done when `curl -s -o /dev/null -w '%{http_code}' localhost:$PORT/api/health` prints `200`.
 
 ## 2. Write the walk
 
@@ -33,7 +35,7 @@ Done when the walk reaches the change's outcome and asserts it by role and label
 ## 3. Watch it go red, then green
 
 ```sh
-BASE_URL=http://localhost:3100 npm run test:e2e -- e2e/<spec>.ts
+npm run test:e2e -- e2e/<spec>.ts   # tests this worktree's PORT from .env.local
 ```
 
 Make it **red** once: run it before the change exists, or break the one expectation that proves the change and restore it (#16 expected the members in the wrong order). Then make it green.
@@ -75,4 +77,4 @@ gh pr view --json body --jq .body | grep -o 'https://raw.githubusercontent.com/[
 
 Stop the dev server you started in step 1, and only that one.
 
-Done when `localhost:3100/api/health` no longer answers.
+Done when `localhost:$PORT/api/health` no longer answers.
