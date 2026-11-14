@@ -46,3 +46,10 @@ export async function createGroup(
   await page.getByRole("button", { name: "Create group" }).click();
   await expect(page).toHaveURL(/\/g\/[A-Za-z0-9_-]{22,}$/);
 }
+
+/** Answers the group page's "Who are you?" as the named member. */
+export async function sayWhoYouAre(page: Page, memberName: string) {
+  const prompt = page.getByRole("region", { name: "Who are you?" });
+  await prompt.getByRole("button", { name: memberName, exact: true }).click();
+  await expect(prompt).toBeHidden();
+}

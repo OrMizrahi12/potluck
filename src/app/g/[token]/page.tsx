@@ -13,6 +13,7 @@ import {
 import { formatAmount, formatDate } from "@/money/format";
 import { visitorLocale } from "../../locale";
 import { GroupLink } from "./group-link";
+import { WhoAreYou } from "./who-are-you";
 
 export const metadata: Metadata = {
   title: "Group · Potluck",
@@ -42,14 +43,30 @@ async function Group({ token, shown }: { token: string; shown: number }) {
   return (
     <>
       <h1>{group.name}</h1>
+      <WhoAreYou
+        token={token}
+        name={group.name}
+        members={group.members.map(({ id, name, balance }) => ({
+          id,
+          name,
+          balance,
+          amount: money(Math.abs(balance)),
+        }))}
+      />
       <p>
         Currency: {group.currency}
-        {currency && ` · ${currency.name}`}
+        {currency && ` · ${currency.name}`} ·{" "}
+        <Link href={`/g/${token}/settings`}>Group settings</Link>
       </p>
 
-      <Link className="button" href={`/g/${token}/expenses/new`}>
-        Add an expense
-      </Link>
+      <div className="actions">
+        <Link className="button" href={`/g/${token}/expenses/new`}>
+          Add an expense
+        </Link>
+        <Link className="button secondary" href={`/g/${token}/settlements/new`}>
+          Record a settlement
+        </Link>
+      </div>
 
       <h2 id="balances">Balances</h2>
       <ul className="balances" aria-labelledby="balances">
@@ -60,6 +77,32 @@ async function Group({ token, shown }: { token: string; shown: number }) {
           </li>
         ))}
       </ul>
+
+      <h2 id="suggested-settlements">Suggested settlements</h2>
+      {group.suggestedSettlements.length === 0 ? (
+        <p>Everyone is settled up.</p>
+      ) : (
+        <ul className="settlements" aria-labelledby="suggested-settlements">
+          {group.suggestedSettlements.map((s) => (
+            <li key={`${s.fromId}-${s.toId}`}>
+              <span>
+                <span className="name">{nameOf.get(s.fromId)}</span> pays{" "}
+                <span className="name">{nameOf.get(s.toId)}</span>{" "}
+                <span className="amount">{money(s.amount)}</span>
+              </span>{" "}
+              <Link
+                href={`/g/${token}/settlements/new?${new URLSearchParams({
+                  from: s.fromId,
+                  to: s.toId,
+                  amount: String(s.amount),
+                })}`}
+              >
+                Record this settlement
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h2 id="expenses">Expenses</h2>
       {group.expenses.length === 0 ? (
@@ -73,6 +116,7 @@ async function Group({ token, shown }: { token: string; shown: number }) {
               nameOf={nameOf}
               money={money}
               locale={locale}
+              editHref={`/g/${token}/expenses/${expense.id}`}
             />
           ))}
         </ul>
@@ -85,6 +129,30 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         >
           Show older expenses
         </Link>
+      )}
+
+      <h2 id="settlements">Settlements</h2>
+      {group.settlements.length === 0 ? (
+        <p>No settlements yet.</p>
+      ) : (
+        <ul className="settlements" aria-labelledby="settlements">
+          {group.settlements.map((s) => (
+            <li key={s.id}>
+              <span>
+                <span className="name">{nameOf.get(s.fromId)}</span> paid{" "}
+                <span className="name">{nameOf.get(s.toId)}</span>{" "}
+                <span className="amount">{money(s.amount)}</span>
+              </span>{" "}
+              <span className="muted">{formatDate(s.date, locale)}</span>{" "}
+              <Link
+                href={`/g/${token}/settlements/${s.id}`}
+                aria-label={`Edit the settlement from ${nameOf.get(s.fromId)} to ${nameOf.get(s.toId)}`}
+              >
+                Edit
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
 
       <GroupLink />
@@ -110,11 +178,13 @@ function Expense({
   nameOf,
   money,
   locale,
+  editHref,
 }: {
   expense: GroupView["expenses"][number];
   nameOf: Map<string, string>;
   money: (minor: number) => string;
   locale: string;
+  editHref: string;
 }) {
   return (
     <li aria-label={expense.description}>
@@ -124,7 +194,10 @@ function Expense({
       </div>
       <p className="muted">
         Paid by {nameOf.get(expense.payerId)} ·{" "}
-        {formatDate(expense.date, locale)}
+        {formatDate(expense.date, locale)} ·{" "}
+        <Link href={editHref} aria-label={`Edit ${expense.description}`}>
+          Edit
+        </Link>
       </p>
       <ul className="shares" aria-label="Shares">
         {expense.shares.map((s) => (

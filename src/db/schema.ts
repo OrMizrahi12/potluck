@@ -109,3 +109,39 @@ export const expenseParticipants = pgTable(
   },
   (t) => [primaryKey({ columns: [t.expenseId, t.memberId] })]
 );
+
+export const settlements = pgTable(
+  "settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    // No cascade: a member a settlement references can't be deleted.
+    fromId: uuid("from_id")
+      .notNull()
+      .references(() => members.id),
+    toId: uuid("to_id")
+      .notNull()
+      .references(() => members.id),
+    // Minor units, as wide as an expense's amount.
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check("settlements_amount_positive", sql`${t.amount} > 0`),
+    // Backstop for the service's refusal of a settlement to oneself.
+    check("settlements_from_not_to", sql`${t.fromId} <> ${t.toId}`),
+    // The group page lists settlements newest first.
+    index("settlements_group_newest_first").on(
+      t.groupId,
+      t.date.desc(),
+      t.createdAt.desc(),
+      t.id.desc()
+    ),
+  ]
+);

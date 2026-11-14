@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createTestDb } from "../test/db";
-import { addExpense, createGroup, readGroupView } from "./service";
+import {
+  addExpense,
+  addSettlement,
+  createGroup,
+  readGroupView,
+} from "./service";
 
 /** mulberry32: a small seeded generator, so a failure reproduces from SEED. */
 function generator(seed: number) {
@@ -37,7 +42,7 @@ function typed(minor: number, digits: number): string {
 }
 
 describe("expenses added at random", () => {
-  it(`split exactly and keep balances at zero (${GROUPS * EXPENSES_PER_GROUP} expenses, seed ${SEED})`, async () => {
+  it(`split exactly, keep balances at zero and are settled up by the suggested settlements (${GROUPS * EXPENSES_PER_GROUP} expenses, seed ${SEED})`, async () => {
     const random = generator(SEED);
     const db = await createTestDb();
 
@@ -54,6 +59,8 @@ describe("expenses added at random", () => {
       if (!created.ok) throw new Error(created.reason);
       const memberIds = created.view.members.map((m) => m.id);
       const amounts = new Map<string, number>();
+      // The cap on one expense or settlement, in minor units.
+      const largest = 10_000_000 * 10 ** currency.digits;
 
       for (let e = 0; e < EXPENSES_PER_GROUP; e++) {
         const payerId = memberIds[random.int(0, memberIds.length - 1)];
@@ -65,7 +72,6 @@ describe("expenses added at random", () => {
           ];
         }
         // Mostly small amounts, where leftover units are common, up to the cap.
-        const largest = 10_000_000 * 10 ** currency.digits;
         const magnitude = 10 ** random.int(1, Math.log10(largest));
         const minor = Math.max(
           participantIds.length,
@@ -103,6 +109,31 @@ describe("expenses added at random", () => {
       }
       expect(first.members.reduce((sum, m) => sum + m.balance, 0)).toBe(0);
       expect(second.expenses).toEqual(first.expenses);
+      expect(second.suggestedSettlements).toEqual(first.suggestedSettlements);
+
+      // Recording every suggested settlement leaves every member settled up.
+      // Fifty expenses can add up to more than one settlement may hold, so a
+      // suggestion over the cap is recorded in parts no larger than it.
+      let last = first;
+      for (const suggestion of first.suggestedSettlements) {
+        for (let left = suggestion.amount; left > 0;) {
+          const part = Math.min(left, largest);
+          const result = await addSettlement(db, created.view.linkToken, {
+            fromId: suggestion.fromId,
+            toId: suggestion.toId,
+            amount: typed(part, currency.digits),
+            date: "2026-11-15",
+          });
+          if (!result.ok)
+            throw new Error(`suggested settlement refused: ${result.reason}`);
+          last = result.view;
+          left -= part;
+        }
+      }
+      expect(last.members.map((m) => m.balance)).toEqual(
+        last.members.map(() => 0)
+      );
+      expect(last.suggestedSettlements).toEqual([]);
     }
   }, 300_000);
 });

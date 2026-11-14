@@ -17,6 +17,8 @@ footer {
 
 footer {
   margin-top: 2rem;
+  /* Room below the last link, so nothing pinned to a corner of the screen covers it. */
+  padding-bottom: 3rem;
 }
 
 /* 16px or more stops phones zooming into focused fields. */
@@ -205,4 +207,100 @@ a.button.secondary {
 
 .balances li > span:last-child {
   white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.settlements {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.settlements > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  overflow-wrap: anywhere;
+}
+
+/* A link tapped at the table needs a finger-sized target. */
+.settlements > li > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.prompt {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.25rem;
+}
+
+.prompt h2,
+.prompt p {
+  margin: 0;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.choices button {
+  overflow-wrap: anywhere;
+}
+
+.my-groups {
+  padding-left: 1.25rem;
+}
+
+.my-groups li {
+  overflow-wrap: anywhere;
+  padding: 0.25rem 0;
+}
+
+.you {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.you p {
+  flex: 1;
+  margin: 0;
+}
+
+.choices button[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.member-settings {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.member-settings > li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.member-settings p {
+  margin: 0;
+}
+
+.prompt h3 {
+  margin: 0;
 }

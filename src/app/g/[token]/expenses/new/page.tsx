@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { addExpenseAction } from "./actions";
-import { ExpenseForm } from "./expense-form";
+import { ExpenseForm } from "../expense-form";
 
 export const metadata: Metadata = {
   title: "Add an expense · Potluck",
@@ -25,6 +25,7 @@ async function NewExpense({ token }: { token: string }) {
       <h1>Add an expense</h1>
       <ExpenseForm
         action={addExpenseAction.bind(null, token)}
+        token={token}
         currency={group.currency}
         digits={group.digits}
         members={group.members.map(({ id, name, active }) => ({
