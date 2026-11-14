@@ -197,6 +197,44 @@ describe("edit expense refusals", () => {
     expect(after).toEqual(before);
   });
 
+  it("refuses an edit made from a version someone else has since changed, and changes nothing", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, chloe } = await lisbonGroup(db);
+    const input = {
+      description: "Dinner",
+      amount: "30.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben, chloe],
+    };
+    const added = await addExpense(db, linkToken, input);
+    if (!added.ok) throw new Error(added.reason);
+    const expenseId = added.view.expenses[0].id;
+    // Ben and Chloé both open version 1; Ben saves first.
+    const bens = await editExpense(db, linkToken, {
+      expenseId,
+      version: 1,
+      ...input,
+      amount: "33.00",
+    });
+    if (!bens.ok) throw new Error(bens.reason);
+
+    const chloes = await editExpense(db, linkToken, {
+      expenseId,
+      version: 1,
+      ...input,
+      description: "Dinner and drinks",
+    });
+
+    expect(chloes).toEqual({ ok: false, reason: "stale-version" });
+    expect(await readGroupView(db, linkToken)).toEqual(bens.view);
+    expect(bens.view.expenses[0]).toMatchObject({
+      description: "Dinner",
+      amount: 3300,
+      version: 2,
+    });
+  });
+
   it("refuses an expense id the group doesn't have", async () => {
     const db = await createTestDb();
     const lisbon = await lisbonGroup(db);

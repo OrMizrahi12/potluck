@@ -224,7 +224,7 @@ export async function addExpense(
 }
 
 export type EditExpenseRefusal =
-  "group-unknown" | "expense-unknown" | ExpenseRefusal;
+  "group-unknown" | "expense-unknown" | "stale-version" | ExpenseRefusal;
 
 export type EditExpenseInput = AddExpenseInput & {
   expenseId: string;
@@ -236,6 +236,8 @@ export type EditExpenseInput = AddExpenseInput & {
  * Replaces an expense's description, amount, date, payer and participants,
  * under the same rules as adding it. Its id never changes, so the odd-cent
  * rule may hand a leftover unit to a participant the edit didn't touch.
+ * Refused as stale when the expense has changed since `version`, so nobody
+ * overwrites a change they haven't seen.
  */
 export async function editExpense(
   db: Db,
@@ -248,26 +250,26 @@ export async function editExpense(
   const refusal = await db.transaction(async (tx) => {
     const group = await lockGroup(tx, linkToken);
     if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
+    if (stored === undefined) return "expense-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
     const expense = await checkExpense(tx, group, input);
     if (typeof expense === "string") return expense;
 
     const { participantIds, ...fields } = expense;
-    const [edited] = await tx
+    await tx
       .update(expenses)
-      .set({ ...fields, version: sql`${expenses.version} + 1` })
-      .where(
-        and(eq(expenses.id, input.expenseId), eq(expenses.groupId, group.id))
-      )
-      .returning({ id: expenses.id });
-    if (!edited) return "expense-unknown" as const;
+      .set({ ...fields, version: input.version + 1 })
+      .where(eq(expenses.id, input.expenseId));
     await tx
       .delete(expenseParticipants)
-      .where(eq(expenseParticipants.expenseId, edited.id));
-    await tx
-      .insert(expenseParticipants)
-      .values(
-        participantIds.map((memberId) => ({ expenseId: edited.id, memberId }))
-      );
+      .where(eq(expenseParticipants.expenseId, input.expenseId));
+    await tx.insert(expenseParticipants).values(
+      participantIds.map((memberId) => ({
+        expenseId: input.expenseId,
+        memberId,
+      }))
+    );
     return undefined;
   });
   if (refusal) return refuse(refusal);
@@ -288,6 +290,24 @@ async function lockGroup(
     .where(eq(groups.linkToken, linkToken))
     .for("update");
   return group;
+}
+
+/**
+ * The stored version of the group's expense or settlement with this id, or
+ * undefined when the group has none. Call it with the group locked (see
+ * lockGroup), so the version can't change before the write that checks it.
+ */
+async function storedVersion(
+  tx: Db,
+  table: typeof expenses | typeof settlements,
+  groupId: string,
+  id: string
+): Promise<number | undefined> {
+  const [row] = await tx
+    .select({ version: table.version })
+    .from(table)
+    .where(and(eq(table.id, id), eq(table.groupId, groupId)));
+  return row?.version;
 }
 
 /** An expense as it will be stored, or why the group's rules refuse it. */
