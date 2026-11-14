@@ -8,6 +8,7 @@ import {
   type CommandResult,
   type GroupView,
 } from "../group/service";
+import { LIMITS } from "../group/limits";
 import { appInfo } from "./schema";
 import type { Db } from "./types";
 
@@ -20,6 +21,7 @@ export const SEED_LINKS = {
   skiCabin: "seed-ski-cabin-usd-001",
   yenGroup: "seed-tokyo-trip-jpy-01",
   dinarGroup: "seed-conference-bhd-01",
+  fullGroup: "seed-reunion-50-member",
 } as const;
 
 /**
@@ -42,6 +44,7 @@ export async function seed(db: Db): Promise<void> {
   await seedSkiCabin(db);
   await seedYenGroup(db);
   await seedDinarGroup(db);
+  await seedFullGroup(db);
 }
 
 /** An inactive member who still owes the group, and a payer who isn't a participant. */
@@ -208,6 +211,30 @@ async function seedDinarGroup(db: Db) {
   ]) {
     written(await addExpense(db, link, expense));
   }
+}
+
+/** A group with as many members as a group can have. */
+async function seedFullGroup(db: Db) {
+  const link = SEED_LINKS.fullGroup;
+  const group = await recreate(db, link, {
+    name: "Family reunion",
+    currency: "GBP",
+    memberNames: Array.from(
+      { length: LIMITS.members },
+      (_, i) => `Guest ${i + 1}`
+    ),
+  });
+  const everyone = group.members.map((m) => m.id);
+
+  written(
+    await addExpense(db, link, {
+      description: "Hall hire",
+      amount: "500.00",
+      date: "2026-08-15",
+      payerId: everyone[0],
+      participantIds: everyone,
+    })
+  );
 }
 
 /** Deletes the group at `link`, if there is one, and creates it afresh there. */

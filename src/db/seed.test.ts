@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readGroupView, type GroupView } from "../group/service";
+import { addMember, readGroupView, type GroupView } from "../group/service";
 import { createTestDb } from "../test/db";
 import { SEED_LINKS, seed } from "./seed";
 
@@ -127,5 +127,24 @@ describe("the seeded group in dinars", () => {
       ["Sara", -1375],
       ["Omar", -5625],
     ]);
+  });
+});
+
+describe("the seeded reunion", () => {
+  // Hall hire, 500.00 by Guest 1 among all 50 (10.00 each): Guest 1 +490.00,
+  // every other guest −10.00.
+  it("has 50 members, the most a group can have", async () => {
+    const db = await createTestDb();
+    await seed(db);
+
+    const view = await readGroupView(db, SEED_LINKS.fullGroup);
+
+    expect(view?.members.map((m) => [m.name, m.balance])).toEqual([
+      ["Guest 1", 49000],
+      ...Array.from({ length: 49 }, (_, i) => [`Guest ${i + 2}`, -1000]),
+    ]);
+    expect(
+      await addMember(db, SEED_LINKS.fullGroup, { name: "Guest 51" })
+    ).toEqual({ ok: false, reason: "too-many-members" });
   });
 });
