@@ -160,7 +160,7 @@ describe("the seeded ski cabin", () => {
   // Gal pays Eva 400.00, 100.00 more than she owed: Gal +100.00.
   // Hana lends Finn 200.00, recorded from Hana to Finn: Hana −100.00, Finn −250.00.
   // So Eva +250.00, Finn −250.00, Gal +100.00, Hana −100.00.
-  it("has partial settlements, an overpayment and a loan", async () => {
+  it("has settlements smaller and larger than the balance, and a loan", async () => {
     const view = await seededGroup(SEED_LINKS.skiCabin);
     const names = new Map(view.members.map((m) => [m.id, m.name]));
     const named = (s: { fromId: string; toId: string; amount: number }) => [

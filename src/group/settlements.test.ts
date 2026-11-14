@@ -93,7 +93,7 @@ describe("add settlement", () => {
 
   // Ana paid ¥3000 for all three: Ana +2000, Ben −1000, Chloé −1000.
   // Ben pays Ana ¥1500, 500 more than he owed: Ana +500, Ben +500.
-  it("accepts an overpayment, which leaves the member who paid it owed the difference", async () => {
+  it("accepts a settlement larger than the balance, which leaves the member who paid it owed the difference", async () => {
     const db = await createTestDb();
     const { linkToken, ana, ben, chloe } = await lisbonGroup(db, "JPY");
     await addExpense(db, linkToken, {
@@ -117,9 +117,9 @@ describe("add settlement", () => {
   });
 
   // Chloé paid ¥300 for Ana and herself: Ana −150, Chloé +150.
-  // Ana lends Chloé ¥1000, recorded from lender to borrower: Ana's balance
+  // Ana lends Chloé ¥1000, recorded from the member who lent to the member who borrowed: Ana's balance
   // crosses zero to +850 and Chloé's to −850.
-  it("records a loan from lender to borrower, which can carry a balance across zero", async () => {
+  it("records a loan from the member who lent to the member who borrowed, which can carry a balance across zero", async () => {
     const db = await createTestDb();
     const { linkToken, ana, chloe } = await lisbonGroup(db, "JPY");
     await addExpense(db, linkToken, {
@@ -432,14 +432,14 @@ describe("suggested settlements", () => {
     ).toEqual([0, 0, 0]);
   });
 
-  // The logic prototype's "overpayment and loans". Ana paid 80.00 for Ana and
+  // The logic prototype's settlement larger than the balance, and loans. Ana paid 80.00 for Ana and
   // Ben: Ana +40.00, Ben −40.00.
   // Ben pays Ana 100.00, 60.00 too much: Ana −60.00, Ben +60.00, so Ana now
   //   pays Ben.
   // Cai lends Dee 50.00: Cai +50.00, Dee −50.00. Ana pays Ben 25.00 back:
   //   Ana −35.00, Ben +35.00. Dee owes most, so Dee pays Cai first.
-  // Deleting the overpayment: Ana +40.00 + 25.00 = +65.00, Ben −65.00.
-  it("flip direction after an overpayment, and flip back when it's deleted", async () => {
+  // Deleting the settlement larger than the balance: Ana +40.00 + 25.00 = +65.00, Ben −65.00.
+  it("flip direction after a settlement larger than the balance, and flip back when it's deleted", async () => {
     const db = await createTestDb();
     const created = await createGroup(db, {
       name: "Flat",

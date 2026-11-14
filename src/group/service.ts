@@ -410,8 +410,9 @@ export type AddSettlementInput = {
 
 /**
  * Records that one member paid another outside Potluck. Any positive amount
- * up to the cap is accepted, whatever it does to balances: a partial payment,
- * an overpayment, or a loan from lender to borrower.
+ * up to the cap is accepted, whatever it does to balances: a settlement
+ * smaller than the balance, one larger than the balance, or a loan from the
+ * member who lent to the member who borrowed.
  */
 export async function addSettlement(
   db: Db,
