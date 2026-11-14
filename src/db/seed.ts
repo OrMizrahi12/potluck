@@ -19,6 +19,7 @@ export const SEED_LINKS = {
   flatShare: "seed-flat-share-eur-01",
   skiCabin: "seed-ski-cabin-usd-001",
   yenGroup: "seed-tokyo-trip-jpy-01",
+  dinarGroup: "seed-conference-bhd-01",
 } as const;
 
 /**
@@ -40,6 +41,7 @@ export async function seed(db: Db): Promise<void> {
   await seedFlatShare(db);
   await seedSkiCabin(db);
   await seedYenGroup(db);
+  await seedDinarGroup(db);
 }
 
 /** An inactive member who still owes the group, and a payer who isn't a participant. */
@@ -176,6 +178,36 @@ async function seedYenGroup(db: Db) {
       date: "2026-09-15",
     })
   );
+}
+
+/** A group in Bahraini dinars, which have three decimals. */
+async function seedDinarGroup(db: Db) {
+  const link = SEED_LINKS.dinarGroup;
+  const group = await recreate(db, link, {
+    name: "Manama conference",
+    currency: "BHD",
+    memberNames: ["Ali", "Sara", "Omar"],
+  });
+  const [ali, sara, omar] = group.members.map((m) => m.id);
+
+  for (const expense of [
+    {
+      description: "Taxi",
+      amount: "10.500",
+      date: "2026-11-02",
+      payerId: ali,
+      participantIds: [ali, sara, omar],
+    },
+    {
+      description: "Lunch",
+      amount: "4.250",
+      date: "2026-11-03",
+      payerId: sara,
+      participantIds: [sara, omar],
+    },
+  ]) {
+    written(await addExpense(db, link, expense));
+  }
 }
 
 /** Deletes the group at `link`, if there is one, and creates it afresh there. */

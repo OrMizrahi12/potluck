@@ -109,3 +109,23 @@ describe("the seeded group in yen", () => {
     ]);
   });
 });
+
+describe("the seeded group in dinars", () => {
+  // The Bahraini dinar has three decimals. A taxi, 10.500 by Ali among all
+  // three (3.500 each): Ali +7.000. Lunch, 4.250 by Sara for Sara and Omar
+  // (2.125 each): Sara −3.500 + 2.125 = −1.375, Omar −3.500 − 2.125 = −5.625.
+  it("is in Bahraini dinars, with amounts in thousandths", async () => {
+    const view = await seededGroup(SEED_LINKS.dinarGroup);
+
+    expect([view.currency, view.digits]).toEqual(["BHD", 3]);
+    expect(view.expenses.map((e) => [e.description, e.amount])).toEqual([
+      ["Lunch", 4250],
+      ["Taxi", 10500],
+    ]);
+    expect(balancesByName(view)).toEqual([
+      ["Ali", 7000],
+      ["Sara", -1375],
+      ["Omar", -5625],
+    ]);
+  });
+});
