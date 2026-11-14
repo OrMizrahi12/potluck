@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import {
+  expenseParticipants,
+  expenses,
+  members,
+  settlements,
+} from "../db/schema";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
 import {
@@ -6,6 +12,8 @@ import {
   addSettlement,
   changeCurrency,
   createGroup,
+  deleteGroup,
+  hasGroup,
   readGroupView,
 } from "./service";
 
@@ -103,5 +111,62 @@ describe("change currency refusals", () => {
         currency: "JPY",
       })
     ).toEqual({ ok: false, reason: "group-unknown" });
+  });
+});
+
+describe("delete group", () => {
+  it("deletes the group and everything in it, so its link no longer opens it", async () => {
+    const db = await createTestDb();
+    const lisbon = await lisbonGroup(db);
+    const other = await lisbonGroup(db);
+    await addExpense(db, lisbon.linkToken, {
+      description: "Dinner",
+      amount: "10.00",
+      date: "2026-11-14",
+      payerId: lisbon.ana,
+      participantIds: [lisbon.ana, lisbon.ben],
+    });
+    await addSettlement(db, lisbon.linkToken, {
+      fromId: lisbon.ben,
+      toId: lisbon.ana,
+      amount: "5.00",
+      date: "2026-11-14",
+    });
+
+    const result = await deleteGroup(db, lisbon.linkToken, { version: 1 });
+
+    expect(result).toEqual({ ok: true });
+    expect(await readGroupView(db, lisbon.linkToken)).toBeUndefined();
+    expect(await hasGroup(db, lisbon.linkToken)).toBe(false);
+    // Nothing of it is left behind.
+    for (const table of [members, expenses, expenseParticipants, settlements]) {
+      expect(await db.$count(table)).toBe(table === members ? 2 : 0);
+    }
+    expect(await readGroupView(db, other.linkToken)).toBeDefined();
+  });
+});
+
+describe("delete group refusals", () => {
+  it("refuses a stale version", async () => {
+    const db = await createTestDb();
+    const { linkToken } = await lisbonGroup(db);
+    await changeCurrency(db, linkToken, { version: 1, currency: "USD" });
+
+    expect(await deleteGroup(db, linkToken, { version: 1 })).toEqual({
+      ok: false,
+      reason: "stale-version",
+    });
+    expect(await hasGroup(db, linkToken)).toBe(true);
+  });
+
+  it("refuses a group already deleted", async () => {
+    const db = await createTestDb();
+    const { linkToken } = await lisbonGroup(db);
+    await deleteGroup(db, linkToken, { version: 1 });
+
+    expect(await deleteGroup(db, linkToken, { version: 1 })).toEqual({
+      ok: false,
+      reason: "group-unknown",
+    });
   });
 });

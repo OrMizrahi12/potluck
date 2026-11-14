@@ -428,6 +428,36 @@ export async function changeCurrency(
   return { ok: true, view: await readBack(db, linkToken) };
 }
 
+export type DeleteGroupRefusal = "group-unknown" | "stale-version";
+
+/**
+ * Deletes the group and everything in it, for good: its link stops opening
+ * anything. There is no undo. `version` is the group's, as the page last saw it.
+ */
+export async function deleteGroup(
+  db: Db,
+  linkToken: string,
+  input: { version: number }
+): Promise<{ ok: true } | { ok: false; reason: DeleteGroupRefusal }> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    if (group.version !== input.version) return "stale-version" as const;
+    // Expenses and settlements first: a single cascade from the group can
+    // reach a member before the entries that reference them, and the
+    // foreign keys that protect referenced members then refuse it.
+    await tx.delete(settlements).where(eq(settlements.groupId, group.id));
+    await tx.delete(expenses).where(eq(expenses.groupId, group.id));
+    // Members go with the group (on delete cascade), as do expense participants with expenses.
+    await tx.delete(groups).where(eq(groups.id, group.id));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true };
+}
+
 /** Which member a member command acts on, and the version the page last saw. */
 export type MemberRef = { memberId: string; version: number };
 
