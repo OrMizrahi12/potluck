@@ -56,3 +56,42 @@ test("open a group, say who you are, find yourself as payer and return from my g
 
   expect(errors, "browser errors").toEqual([]);
 });
+
+test("skip the question to look around, but answer it before adding an expense", async ({
+  page,
+}, testInfo) => {
+  const errors = watchForErrors(page);
+  await createGroup(page, {
+    name: `Look around (${testInfo.project.name} ${Date.now()})`,
+    currency: "EUR",
+    memberNames: ["Ana", "Ben"],
+  });
+  const prompt = page.getByRole("region", { name: "Who are you?" });
+
+  await test.step("skip and still see the group", async () => {
+    await prompt.getByRole("button", { name: "Skip" }).click();
+    await expect(prompt).toBeHidden();
+    await expect(page.getByRole("list", { name: "Balances" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Balances" })).toBeVisible();
+    await expect(prompt).toBeHidden();
+  });
+
+  await test.step("adding an expense asks first", async () => {
+    await page.getByRole("link", { name: "Add an expense" }).click();
+    await expect(prompt).toBeVisible();
+    await expect(prompt.getByRole("button", { name: "Skip" })).toHaveCount(0);
+    await expect(
+      page.getByRole("form", { name: "Add an expense" })
+    ).toHaveCount(0);
+    await expectNoSidewaysScroll(page);
+    await screenshot(page, testInfo, "4-asked-before-adding");
+
+    await prompt.getByRole("button", { name: "Ana" }).click();
+    await expect(
+      page.getByLabel("Paid by").locator("option:checked")
+    ).toHaveText("Ana");
+  });
+
+  expect(errors, "browser errors").toEqual([]);
+});

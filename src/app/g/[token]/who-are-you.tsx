@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import { claimMember, rememberGroup, useClaim } from "@/device/store";
+import {
+  claimMember,
+  rememberGroup,
+  skipClaim,
+  useClaim,
+} from "@/device/store";
 
 type Member = { id: string; name: string };
 
@@ -30,6 +35,39 @@ export function MemberChoice({
 }
 
 /**
+ * Asks which member this device is. With `skippable`, it can be put off to
+ * look around the group; without, it must be answered to go on.
+ */
+export function WhoAreYouPrompt({
+  token,
+  members,
+  skippable,
+  children,
+}: {
+  token: string;
+  members: Member[];
+  skippable: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="prompt stack" aria-labelledby="who-are-you">
+      <h2 id="who-are-you">Who are you?</h2>
+      <p>{children}</p>
+      <MemberChoice token={token} members={members} />
+      {skippable && (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => skipClaim(token)}
+        >
+          Skip, just looking
+        </button>
+      )}
+    </section>
+  );
+}
+
+/**
  * Remembers the group on this device and, the first time, asks which member
  * this device is. The answer stays on the device; the server never sees it.
  */
@@ -47,16 +85,12 @@ export function WhoAreYou({
     token,
     members.map((m) => m.id)
   );
-  if (!claim || claim.claimed) return null;
+  if (!claim || claim.claimed || claim.skipped) return null;
 
   return (
-    <section className="prompt stack" aria-labelledby="who-are-you">
-      <h2 id="who-are-you">Who are you?</h2>
-      <p>
-        Pick your name so Potluck can fill you in as the payer and show what you
-        owe or are owed. It&apos;s only remembered on this device.
-      </p>
-      <MemberChoice token={token} members={members} />
-    </section>
+    <WhoAreYouPrompt token={token} members={members} skippable>
+      Pick your name so Potluck can fill you in as the payer and show what you
+      owe or are owed. It&apos;s only remembered on this device.
+    </WhoAreYouPrompt>
   );
 }
