@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   createGroup,
   expectNoSidewaysScroll,
+  sayWhoYouAre,
   screenshot,
   watchForErrors,
 } from "./helpers";
@@ -45,6 +46,7 @@ test("edit and delete an expense", async ({ page }, testInfo) => {
     currency: "JPY",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(page, "Ana");
   await addExpense(page, {
     description: "Dinner",
     amount: "900",
@@ -126,6 +128,7 @@ test("edit and delete a settlement", async ({ page }, testInfo) => {
     currency: "JPY",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(page, "Ana");
   await addExpense(page, {
     description: "Dinner",
     amount: "900",
@@ -186,6 +189,7 @@ test("a save from a version someone else changed says it changed and keeps their
     currency: "JPY",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(ben, "Ben");
   await addExpense(ben, { description: "Dinner", amount: "900", payer: "Ana" });
   await ben.getByRole("link", { name: "Edit Dinner" }).click();
   await expect(ben).toHaveURL(/\/expenses\/[0-9a-f-]{36}$/);

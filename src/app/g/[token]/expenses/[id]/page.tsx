@@ -36,6 +36,7 @@ async function EditExpense({ token, id }: { token: string; id: string }) {
       <ExpenseForm
         key={`edit-${expense.version}`}
         action={editExpenseAction.bind(null, token, id, expense.version)}
+        token={token}
         currency={group.currency}
         digits={group.digits}
         members={group.members.map(({ id, name, active }) => ({

@@ -30,6 +30,15 @@ export default function PrivacyPage() {
         service from abuse.
       </p>
 
+      <h2>What stays on your device</h2>
+      <p>
+        Your browser keeps a list of the groups you&apos;ve opened, with their
+        links, and which member you said you are in each. This stays in your
+        browser&apos;s storage and is never sent to Potluck. Anyone using this
+        browser can see that list, and clearing your browser&apos;s site data
+        removes it.
+      </p>
+
       <h2>The link is the key</h2>
       <p>
         <strong>

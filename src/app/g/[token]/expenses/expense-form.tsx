@@ -1,9 +1,11 @@
 "use client";
 
 import { useActionState, useState, useSyncExternalStore } from "react";
+import { useClaim } from "@/device/store";
 import { LIMITS } from "@/group/limits";
 import type { AddExpenseRefusal, EditExpenseRefusal } from "@/group/service";
 import { Refusal, STALE_MESSAGE } from "../refusal";
+import { WhoAreYouPrompt } from "../who-are-you";
 
 type Member = { id: string; name: string; active: boolean };
 
@@ -76,10 +78,12 @@ function message(
 /**
  * Adds an expense, or edits one when `initial` holds it. The amount is as
  * typed: "12.34". Without `initial`, active members are the participants and
- * the date is today.
+ * the date is today, the payer is the member this device claims, and the
+ * form waits until the device has said which member it is.
  */
 export function ExpenseForm({
   action,
+  token,
   currency,
   digits,
   members,
@@ -89,6 +93,7 @@ export function ExpenseForm({
     previous: ExpenseFormState,
     form: FormData
   ) => Promise<ExpenseFormState>;
+  token: string;
   currency: string;
   digits: number;
   members: Member[];
@@ -104,7 +109,13 @@ export function ExpenseForm({
   // Controlled, so a refused submission keeps what was typed.
   const [description, setDescription] = useState(initial?.description ?? "");
   const [amount, setAmount] = useState(initial?.amount ?? "");
-  const [payerId, setPayerId] = useState(initial?.payerId ?? "");
+  // A new expense's payer defaults to the member this device claims.
+  const [payerId, setPayerId] = useState(initial?.payerId);
+  const claim = useClaim(
+    token,
+    members.map((m) => m.id)
+  );
+  const claimed = claim?.claimed;
   const [participantIds, setParticipantIds] = useState(
     () =>
       new Set(
@@ -125,6 +136,20 @@ export function ExpenseForm({
   }
 
   const editing = initial !== undefined;
+  // Which member this device is lives only in the browser, so adding waits
+  // for it; an expense can't be added before it's answered. Editing names
+  // its payer already.
+  if (!editing) {
+    if (!claim) return null;
+    if (!claimed)
+      return (
+        <WhoAreYouPrompt token={token} members={members} skippable={false}>
+          Say which member you are before adding an expense. It&apos;s only
+          remembered on this device.
+        </WhoAreYouPrompt>
+      );
+  }
+
   return (
     <form
       action={formAction}
@@ -172,7 +197,7 @@ export function ExpenseForm({
         <select
           name="payer"
           required
-          value={payerId}
+          value={payerId ?? claimed ?? ""}
           onChange={(e) => setPayerId(e.target.value)}
         >
           <option value="" disabled>
