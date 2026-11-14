@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useSyncExternalStore } from "react";
+import { useClaim } from "@/device/store";
 import { LIMITS } from "@/group/limits";
 import type { AddExpenseRefusal } from "@/group/service";
 import type { AddExpenseFormState } from "./actions";
@@ -65,6 +66,7 @@ function message(
 
 export function ExpenseForm({
   action,
+  token,
   currency,
   digits,
   members,
@@ -73,6 +75,7 @@ export function ExpenseForm({
     previous: AddExpenseFormState,
     form: FormData
   ) => Promise<AddExpenseFormState>;
+  token: string;
   currency: string;
   digits: number;
   members: Member[];
@@ -81,7 +84,12 @@ export function ExpenseForm({
   // Controlled, so a refused submission keeps what was typed.
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [payerId, setPayerId] = useState("");
+  // The payer defaults to the member this device claims in the group.
+  const [payerId, setPayerId] = useState<string>();
+  const claimed = useClaim(
+    token,
+    members.map((m) => m.id)
+  )?.claimed;
   const [participantIds, setParticipantIds] = useState(
     () => new Set(members.filter((m) => m.active).map((m) => m.id))
   );
@@ -139,7 +147,7 @@ export function ExpenseForm({
         <select
           name="payer"
           required
-          value={payerId}
+          value={payerId ?? claimed ?? ""}
           onChange={(e) => setPayerId(e.target.value)}
         >
           <option value="" disabled>
