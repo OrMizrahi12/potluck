@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
-import { addMember, createGroup, readGroupView } from "./service";
+import { addMember, createGroup, readGroupView, renameMember } from "./service";
 
 /** A fresh group with members Ana, Ben and Chloé. */
 async function lisbonGroup(db: Db) {
@@ -82,5 +82,94 @@ describe("add member refusals", () => {
       reason: "too-many-members",
     });
     expect((await readGroupView(db, linkToken))?.members).toHaveLength(50);
+  });
+});
+
+describe("rename member", () => {
+  it("renames the member and moves their version on", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+
+    const result = await renameMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      name: " Benjamin ",
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members[1]).toMatchObject({
+      id: ben,
+      name: "Benjamin",
+      version: 2,
+    });
+  });
+
+  it("lets a member's own name change case", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+
+    const result = await renameMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      name: "BEN",
+    });
+
+    expect(result.ok && result.view.members[1].name).toBe("BEN");
+  });
+});
+
+describe("rename member refusals", () => {
+  it.each([
+    ["another member's name", "chloé ", "member-name-duplicate"],
+    ["a blank name", " ", "member-name-missing"],
+    ["a 51-character name", "a".repeat(51), "member-name-too-long"],
+  ])("refuses %s", async (_, name, reason) => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+
+    expect(
+      await renameMember(db, linkToken, { memberId: ben, version: 1, name })
+    ).toEqual({ ok: false, reason });
+    expect((await readGroupView(db, linkToken))?.members[1].name).toBe("Ben");
+  });
+
+  it("refuses a stale version: this changed, reload", async () => {
+    const db = await createTestDb();
+    const { linkToken, ben } = await lisbonGroup(db);
+    await renameMember(db, linkToken, {
+      memberId: ben,
+      version: 1,
+      name: "Bo",
+    });
+
+    expect(
+      await renameMember(db, linkToken, {
+        memberId: ben,
+        version: 1,
+        name: "Benny",
+      })
+    ).toEqual({ ok: false, reason: "stale-version" });
+    expect((await readGroupView(db, linkToken))?.members[1].name).toBe("Bo");
+  });
+
+  it("refuses a member of another group and an unknown link", async () => {
+    const db = await createTestDb();
+    const lisbon = await lisbonGroup(db);
+    const other = await lisbonGroup(db);
+
+    expect(
+      await renameMember(db, lisbon.linkToken, {
+        memberId: other.ben,
+        version: 1,
+        name: "Bo",
+      })
+    ).toEqual({ ok: false, reason: "member-unknown" });
+    expect(
+      await renameMember(db, "AAAAAAAAAAAAAAAAAAAAAA", {
+        memberId: lisbon.ben,
+        version: 1,
+        name: "Bo",
+      })
+    ).toEqual({ ok: false, reason: "group-unknown" });
   });
 });

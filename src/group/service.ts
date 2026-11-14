@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { findCurrency, type Currency } from "../currency/currencies";
 import {
   expenseParticipants,
@@ -378,6 +378,71 @@ export async function addMember(
 
   return { ok: true, view: await readBack(db, linkToken) };
 }
+
+/** Which member a member command acts on, and the version the page last saw. */
+export type MemberRef = { memberId: string; version: number };
+
+/** Refusals every member command can give. "stale-version": this changed, reload. */
+type MemberRefRefusal = "group-unknown" | "member-unknown" | "stale-version";
+
+export type RenameMemberRefusal = MemberRefRefusal | MemberNameRefusal;
+
+export async function renameMember(
+  db: Db,
+  linkToken: string,
+  input: MemberRef & { name: string }
+): Promise<CommandResult<RenameMemberRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  const name = cleanName(input.name);
+  const nameRefusal = memberNameRefusal(name);
+  if (nameRefusal) return refuse(nameRefusal);
+
+  const refusal = await writeMemberName(db, async (tx) => {
+    const found = await lockMember(tx, linkToken, input);
+    if (typeof found === "string") return found;
+
+    const others = await tx
+      .select({ name: members.name })
+      .from(members)
+      .where(and(eq(members.groupId, found.groupId), ne(members.id, found.id)));
+    if (others.some((m) => nameKey(m.name) === nameKey(name)))
+      return "member-name-duplicate" as const;
+
+    await tx
+      .update(members)
+      .set({ name, version: sql`${members.version} + 1` })
+      .where(eq(members.id, found.id));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+/**
+ * The member a command names, with the group locked (see lockGroup), or why
+ * the command can't act on them.
+ */
+async function lockMember(
+  tx: Tx,
+  linkToken: string,
+  { memberId, version }: MemberRef
+): Promise<{ id: string; groupId: string } | MemberRefRefusal> {
+  const group = await lockGroup(tx, linkToken);
+  if (!group) return "group-unknown";
+  // An id that isn't a UUID would make the database throw, not answer.
+  if (!UUID_SHAPE.test(memberId)) return "member-unknown";
+  const [member] = await tx
+    .select({ id: members.id, version: members.version })
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.groupId, group.id)));
+  if (!member) return "member-unknown";
+  if (member.version !== version) return "stale-version";
+  return { id: member.id, groupId: group.id };
+}
+
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
