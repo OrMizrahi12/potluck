@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { addExpenseAction } from "./actions";
-import { ExpenseForm } from "./expense-form";
+import { ExpenseForm } from "../expense-form";
 
 export const metadata: Metadata = {
   title: "Add an expense · Potluck",

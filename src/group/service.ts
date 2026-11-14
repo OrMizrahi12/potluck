@@ -160,8 +160,8 @@ export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
   return group !== undefined;
 }
 
-export type AddExpenseRefusal =
-  | "group-unknown"
+/** Why an expense's description, amount, date, payer or participants can't be recorded. */
+export type ExpenseRefusal =
   | "description-missing"
   | "description-too-long"
   | "amount-unreadable"
@@ -171,8 +171,10 @@ export type AddExpenseRefusal =
   | "payer-unknown"
   | "participant-unknown"
   | "participants-only-payer"
-  | "amount-too-small-to-split"
-  | "too-many-expenses";
+  | "amount-too-small-to-split";
+
+export type AddExpenseRefusal =
+  "group-unknown" | ExpenseRefusal | "too-many-expenses";
 
 export type AddExpenseInput = {
   description: string;
@@ -194,42 +196,12 @@ export async function addExpense(
   input: AddExpenseInput
 ): Promise<CommandResult<AddExpenseRefusal>> {
   if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
-  const description = cleanName(input.description);
-  if (description === "") return refuse("description-missing");
-  if (description.length > LIMITS.descriptionLength)
-    return refuse("description-too-long");
-  if (!isCalendarDate(input.date)) return refuse("date-unreadable");
 
   const refusal = await db.transaction(async (tx) => {
-    // Locking the group row serializes its writers, so two expenses added at
-    // once can't both slip under the cap.
-    const [group] = await tx
-      .select({ id: groups.id, currency: groups.currency })
-      .from(groups)
-      .where(eq(groups.linkToken, linkToken))
-      .for("update");
+    const group = await lockGroup(tx, linkToken);
     if (!group) return "group-unknown" as const;
-    const digits = currencyOf(group.currency).digits;
-
-    const amount = readAmount(input.amount, digits);
-    if (typeof amount === "string") return amount;
-
-    const memberIds = new Set(
-      (
-        await tx
-          .select({ id: members.id })
-          .from(members)
-          .where(eq(members.groupId, group.id))
-      ).map((m) => m.id)
-    );
-    if (!memberIds.has(input.payerId)) return "payer-unknown" as const;
-    const participantIds = [...new Set(input.participantIds)];
-    if (participantIds.some((id) => !memberIds.has(id)))
-      return "participant-unknown" as const;
-    if (!participantIds.some((id) => id !== input.payerId))
-      return "participants-only-payer" as const;
-    if (amount < participantIds.length)
-      return "amount-too-small-to-split" as const;
+    const expense = await checkExpense(tx, group, input);
+    if (typeof expense === "string") return expense;
 
     const [{ count }] = await tx
       .select({ count: sql<number>`count(*)::int` })
@@ -237,40 +209,185 @@ export async function addExpense(
       .where(eq(expenses.groupId, group.id));
     if (count >= LIMITS.expenses) return "too-many-expenses" as const;
 
-    const [expense] = await tx
+    const { participantIds, ...fields } = expense;
+    const [added] = await tx
       .insert(expenses)
-      .values({
-        groupId: group.id,
-        description,
-        amount,
-        date: input.date,
-        payerId: input.payerId,
-      })
+      .values({ groupId: group.id, ...fields })
       .returning({ id: expenses.id });
     await tx
       .insert(expenseParticipants)
       .values(
-        participantIds.map((memberId) => ({ expenseId: expense.id, memberId }))
+        participantIds.map((memberId) => ({ expenseId: added.id, memberId }))
       );
     return undefined;
   });
   if (refusal) return refuse(refusal);
-
-  const view = await readGroupView(db, linkToken);
-  if (!view) throw new Error("A group just written could not be read back.");
-  return { ok: true, view };
+  return { ok: true, view: await readBack(db, linkToken) };
 }
 
-export type AddSettlementRefusal =
-  | "group-unknown"
+export type EditExpenseRefusal =
+  "group-unknown" | "expense-unknown" | "stale-version" | ExpenseRefusal;
+
+export type EditExpenseInput = AddExpenseInput & {
+  expenseId: string;
+  /** The expense's version the edit was made from. */
+  version: number;
+};
+
+/**
+ * Replaces an expense's description, amount, date, payer and participants,
+ * under the same rules as adding it. Its id never changes, so the odd-cent
+ * rule may hand a leftover unit to a participant the edit didn't touch.
+ * Refused as stale when the expense has changed since `version`, so nobody
+ * overwrites a change they haven't seen.
+ */
+export async function editExpense(
+  db: Db,
+  linkToken: string,
+  input: EditExpenseInput
+): Promise<CommandResult<EditExpenseRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
+    if (stored === undefined) return "expense-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+    const expense = await checkExpense(tx, group, input);
+    if (typeof expense === "string") return expense;
+
+    const { participantIds, ...fields } = expense;
+    await tx
+      .update(expenses)
+      .set({ ...fields, version: input.version + 1 })
+      .where(eq(expenses.id, input.expenseId));
+    await tx
+      .delete(expenseParticipants)
+      .where(eq(expenseParticipants.expenseId, input.expenseId));
+    await tx.insert(expenseParticipants).values(
+      participantIds.map((memberId) => ({
+        expenseId: input.expenseId,
+        memberId,
+      }))
+    );
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+export type DeleteExpenseRefusal =
+  "group-unknown" | "expense-unknown" | "stale-version";
+
+/**
+ * Deletes an expense for good, with its participants: there's no undo.
+ * Refused as stale when the expense has changed since `version`.
+ */
+export async function deleteExpense(
+  db: Db,
+  linkToken: string,
+  input: { expenseId: string; version: number }
+): Promise<CommandResult<DeleteExpenseRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(tx, expenses, group.id, input.expenseId);
+    if (stored === undefined) return "expense-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+
+    // Its participants go with it: their foreign key cascades.
+    await tx.delete(expenses).where(eq(expenses.id, input.expenseId));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+/**
+ * The stored version of the group's expense or settlement with this id, or
+ * undefined when the group has none. Call it with the group locked (see
+ * lockGroup), so the version can't change before the write that checks it.
+ */
+async function storedVersion(
+  tx: Tx,
+  table: typeof expenses | typeof settlements,
+  groupId: string,
+  id: string
+): Promise<number | undefined> {
+  const [row] = await tx
+    .select({ version: table.version })
+    .from(table)
+    .where(and(eq(table.id, id), eq(table.groupId, groupId)));
+  return row?.version;
+}
+
+/** An expense as it will be stored, or why the group's rules refuse it. */
+async function checkExpense(
+  tx: Tx,
+  group: { id: string; currency: string },
+  input: AddExpenseInput
+): Promise<
+  | {
+      description: string;
+      amount: number;
+      date: string;
+      payerId: string;
+      participantIds: string[];
+    }
+  | ExpenseRefusal
+> {
+  const description = cleanName(input.description);
+  if (description === "") return "description-missing";
+  if (description.length > LIMITS.descriptionLength)
+    return "description-too-long";
+  if (!isCalendarDate(input.date)) return "date-unreadable";
+
+  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  if (typeof amount === "string") return amount;
+
+  const memberIds = await memberIdsOf(tx, group.id);
+  if (!memberIds.has(input.payerId)) return "payer-unknown";
+  const participantIds = [...new Set(input.participantIds)];
+  if (participantIds.some((id) => !memberIds.has(id)))
+    return "participant-unknown";
+  if (!participantIds.some((id) => id !== input.payerId))
+    return "participants-only-payer";
+  if (amount < participantIds.length) return "amount-too-small-to-split";
+
+  return {
+    description,
+    amount,
+    date: input.date,
+    payerId: input.payerId,
+    participantIds,
+  };
+}
+
+async function memberIdsOf(tx: Tx, groupId: string): Promise<Set<string>> {
+  const rows = await tx
+    .select({ id: members.id })
+    .from(members)
+    .where(eq(members.groupId, groupId));
+  return new Set(rows.map((m) => m.id));
+}
+
+/** Why a settlement's from, to, amount or date can't be recorded. */
+export type SettlementRefusal =
   | "amount-unreadable"
   | "amount-not-positive"
   | "amount-too-large"
   | "date-unreadable"
   | "from-unknown"
   | "to-unknown"
-  | "settlement-to-self"
-  | "too-many-settlements";
+  | "settlement-to-self";
+
+export type AddSettlementRefusal =
+  "group-unknown" | SettlementRefusal | "too-many-settlements";
 
 export type AddSettlementInput = {
   /** The member who paid. */
@@ -294,31 +411,12 @@ export async function addSettlement(
   input: AddSettlementInput
 ): Promise<CommandResult<AddSettlementRefusal>> {
   if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
-  if (input.fromId === input.toId) return refuse("settlement-to-self");
-  if (!isCalendarDate(input.date)) return refuse("date-unreadable");
 
   const refusal = await db.transaction(async (tx) => {
-    // Locking the group row serializes its writers (see addExpense).
-    const [group] = await tx
-      .select({ id: groups.id, currency: groups.currency })
-      .from(groups)
-      .where(eq(groups.linkToken, linkToken))
-      .for("update");
+    const group = await lockGroup(tx, linkToken);
     if (!group) return "group-unknown" as const;
-
-    const amount = readAmount(input.amount, currencyOf(group.currency).digits);
-    if (typeof amount === "string") return amount;
-
-    const memberIds = new Set(
-      (
-        await tx
-          .select({ id: members.id })
-          .from(members)
-          .where(eq(members.groupId, group.id))
-      ).map((m) => m.id)
-    );
-    if (!memberIds.has(input.fromId)) return "from-unknown" as const;
-    if (!memberIds.has(input.toId)) return "to-unknown" as const;
+    const settlement = await checkSettlement(tx, group, input);
+    if (typeof settlement === "string") return settlement;
 
     const [{ count }] = await tx
       .select({ count: sql<number>`count(*)::int` })
@@ -326,20 +424,118 @@ export async function addSettlement(
       .where(eq(settlements.groupId, group.id));
     if (count >= LIMITS.settlements) return "too-many-settlements" as const;
 
-    await tx.insert(settlements).values({
-      groupId: group.id,
-      fromId: input.fromId,
-      toId: input.toId,
-      amount,
-      date: input.date,
-    });
+    await tx.insert(settlements).values({ groupId: group.id, ...settlement });
     return undefined;
   });
   if (refusal) return refuse(refusal);
+  return { ok: true, view: await readBack(db, linkToken) };
+}
 
-  const view = await readGroupView(db, linkToken);
-  if (!view) throw new Error("A group just written could not be read back.");
-  return { ok: true, view };
+export type EditSettlementRefusal =
+  "group-unknown" | "settlement-unknown" | "stale-version" | SettlementRefusal;
+
+export type EditSettlementInput = AddSettlementInput & {
+  settlementId: string;
+  /** The settlement's version the edit was made from. */
+  version: number;
+};
+
+/**
+ * Replaces a settlement's from, to, amount and date, under the same rules as
+ * recording it. Refused as stale when the settlement has changed since
+ * `version`, so nobody overwrites a change they haven't seen.
+ */
+export async function editSettlement(
+  db: Db,
+  linkToken: string,
+  input: EditSettlementInput
+): Promise<CommandResult<EditSettlementRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.settlementId)) return refuse("settlement-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(
+      tx,
+      settlements,
+      group.id,
+      input.settlementId
+    );
+    if (stored === undefined) return "settlement-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+    const settlement = await checkSettlement(tx, group, input);
+    if (typeof settlement === "string") return settlement;
+
+    await tx
+      .update(settlements)
+      .set({ ...settlement, version: input.version + 1 })
+      .where(eq(settlements.id, input.settlementId));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+export type DeleteSettlementRefusal =
+  "group-unknown" | "settlement-unknown" | "stale-version";
+
+/**
+ * Deletes a settlement for good: there's no undo. Refused as stale when the
+ * settlement has changed since `version`.
+ */
+export async function deleteSettlement(
+  db: Db,
+  linkToken: string,
+  input: { settlementId: string; version: number }
+): Promise<CommandResult<DeleteSettlementRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.settlementId)) return refuse("settlement-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(
+      tx,
+      settlements,
+      group.id,
+      input.settlementId
+    );
+    if (stored === undefined) return "settlement-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+
+    await tx.delete(settlements).where(eq(settlements.id, input.settlementId));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readBack(db, linkToken) };
+}
+
+/** A settlement as it will be stored, or why the group's rules refuse it. */
+async function checkSettlement(
+  tx: Tx,
+  group: { id: string; currency: string },
+  input: AddSettlementInput
+): Promise<
+  | { fromId: string; toId: string; amount: number; date: string }
+  | SettlementRefusal
+> {
+  if (input.fromId === input.toId) return "settlement-to-self";
+  if (!isCalendarDate(input.date)) return "date-unreadable";
+
+  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  if (typeof amount === "string") return amount;
+
+  const memberIds = await memberIdsOf(tx, group.id);
+  if (!memberIds.has(input.fromId)) return "from-unknown";
+  if (!memberIds.has(input.toId)) return "to-unknown";
+
+  return {
+    fromId: input.fromId,
+    toId: input.toId,
+    amount,
+    date: input.date,
+  };
 }
 
 type MemberNameRefusal =
