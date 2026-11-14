@@ -25,6 +25,7 @@ async function NewExpense({ token }: { token: string }) {
       <h1>Add an expense</h1>
       <ExpenseForm
         action={addExpenseAction.bind(null, token)}
+        token={token}
         currency={group.currency}
         digits={group.digits}
         members={group.members.map(({ id, name, active }) => ({
