@@ -17,6 +17,8 @@ footer {
 
 footer {
   margin-top: 2rem;
+  /* Room below the last link, so nothing pinned to a corner of the screen covers it. */
+  padding-bottom: 3rem;
 }
 
 /* 16px or more stops phones zooming into focused fields. */
