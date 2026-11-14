@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { groups, settlements } from "../db/schema";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
-import { addExpense, addSettlement, createGroup } from "./service";
+import {
+  addExpense,
+  addSettlement,
+  createGroup,
+  readGroupView,
+} from "./service";
 
 /** A fresh group in `currency` with members Ana, Ben and Chloé. */
 async function lisbonGroup(db: Db, currency = "EUR") {
@@ -48,5 +54,38 @@ describe("add settlement", () => {
       },
     ]);
     expect(result.view.members.map((m) => m.balance)).toEqual([1000, 0, -1000]);
+  });
+});
+
+describe("add settlement refusals", () => {
+  it("refuses a settlement from a member to themselves", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana } = await lisbonGroup(db);
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: ana,
+      toId: ana,
+      amount: "10.00",
+      date: "2026-11-14",
+    });
+
+    expect(result).toEqual({ ok: false, reason: "settlement-to-self" });
+    expect((await readGroupView(db, linkToken))?.settlements).toEqual([]);
+  });
+
+  it("is backed by the database, which refuses a settlement to oneself written past the service", async () => {
+    const db = await createTestDb();
+    const { ana } = await lisbonGroup(db);
+    const [group] = await db.select({ id: groups.id }).from(groups);
+
+    await expect(
+      db.insert(settlements).values({
+        groupId: group.id,
+        fromId: ana,
+        toId: ana,
+        amount: 1000,
+        date: "2026-11-14",
+      })
+    ).rejects.toThrow();
   });
 });

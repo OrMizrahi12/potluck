@@ -257,7 +257,8 @@ export type AddSettlementRefusal =
   | "amount-too-large"
   | "date-unreadable"
   | "from-unknown"
-  | "to-unknown";
+  | "to-unknown"
+  | "settlement-to-self";
 
 export type AddSettlementInput = {
   /** The member who paid. */
@@ -281,6 +282,7 @@ export async function addSettlement(
   input: AddSettlementInput
 ): Promise<CommandResult<AddSettlementRefusal>> {
   if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (input.fromId === input.toId) return refuse("settlement-to-self");
   if (!isCalendarDate(input.date)) return refuse("date-unreadable");
 
   const refusal = await db.transaction(async (tx) => {
