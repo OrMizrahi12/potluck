@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addMember, readGroupView, type GroupView } from "../group/service";
+import {
+  addExpense,
+  addMember,
+  createGroup,
+  readGroupView,
+  type GroupView,
+} from "../group/service";
 import { createTestDb } from "../test/db";
+import type { Db } from "./types";
 import { SEED_LINKS, seed } from "./seed";
 
 /** A seeded group's view, read after seeding a fresh database. */
@@ -11,6 +18,98 @@ async function seededGroup(link: string): Promise<GroupView> {
   if (!view) throw new Error(`no seeded group at ${link}`);
   return view;
 }
+
+/**
+ * A group view as its page shows it: members by name, since the ids of its
+ * members, expenses and settlements are new on every run.
+ */
+function asShown(view: GroupView | undefined) {
+  if (!view) return undefined;
+  const names = new Map(view.members.map((m) => [m.id, m.name]));
+  const name = (id: string) => names.get(id);
+  const newEachRun = "(new each run)";
+  return {
+    ...view,
+    members: view.members.map((m) => ({ ...m, id: newEachRun })),
+    expenses: view.expenses.map((e) => ({
+      ...e,
+      id: newEachRun,
+      payerId: name(e.payerId),
+      shares: e.shares.map((s) => ({ ...s, memberId: name(s.memberId) })),
+    })),
+    settlements: view.settlements.map((s) => ({
+      ...s,
+      id: newEachRun,
+      fromId: name(s.fromId),
+      toId: name(s.toId),
+    })),
+    suggestedSettlements: view.suggestedSettlements.map((s) => ({
+      ...s,
+      fromId: name(s.fromId),
+      toId: name(s.toId),
+    })),
+  };
+}
+
+/** What every seeded group's page shows. */
+async function seededGroupsAsShown(db: Db) {
+  return Promise.all(
+    Object.values(SEED_LINKS).map(async (link) =>
+      asShown(await readGroupView(db, link))
+    )
+  );
+}
+
+describe("the seed", () => {
+  it("gives the same groups every time it runs, undoing changes made to them", async () => {
+    const db = await createTestDb();
+    await seed(db);
+    const first = await seededGroupsAsShown(db);
+    const flat = await readGroupView(db, SEED_LINKS.flatShare);
+    if (!flat) throw new Error("no seeded flat share");
+    const [ana, ben] = flat.members.map((m) => m.id);
+    await addExpense(db, SEED_LINKS.flatShare, {
+      description: "Pizza",
+      amount: "20.00",
+      date: "2026-10-30",
+      payerId: ana,
+      participantIds: [ana, ben],
+    });
+
+    await seed(db);
+
+    expect(await seededGroupsAsShown(db)).toEqual(first);
+    expect(first.every((group) => group !== undefined)).toBe(true);
+  });
+
+  it("gives a fresh database the same groups as one seeded before", async () => {
+    const reseeded = await createTestDb();
+    await seed(reseeded);
+    await seed(reseeded);
+    const fresh = await createTestDb();
+    await seed(fresh);
+
+    expect(await seededGroupsAsShown(reseeded)).toEqual(
+      await seededGroupsAsShown(fresh)
+    );
+  });
+
+  it("leaves groups it didn't create alone", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Lisbon trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+
+    await seed(db);
+
+    expect(await readGroupView(db, created.view.linkToken)).toEqual(
+      created.view
+    );
+  });
+});
 
 /** Each member's name with their balance, in creation order. */
 function balancesByName(view: GroupView) {
