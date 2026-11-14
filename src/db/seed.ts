@@ -18,6 +18,7 @@ import type { Db } from "./types";
 export const SEED_LINKS = {
   flatShare: "seed-flat-share-eur-01",
   skiCabin: "seed-ski-cabin-usd-001",
+  yenGroup: "seed-tokyo-trip-jpy-01",
 } as const;
 
 /**
@@ -38,6 +39,7 @@ export async function seed(db: Db): Promise<void> {
 
   await seedFlatShare(db);
   await seedSkiCabin(db);
+  await seedYenGroup(db);
 }
 
 /** An inactive member who still owes the group, and a payer who isn't a participant. */
@@ -138,6 +140,42 @@ async function seedSkiCabin(db: Db) {
   ]) {
     written(await addSettlement(db, link, settlement));
   }
+}
+
+/** A group in yen, which has no minor units. */
+async function seedYenGroup(db: Db) {
+  const link = SEED_LINKS.yenGroup;
+  const group = await recreate(db, link, {
+    name: "Tokyo trip",
+    currency: "JPY",
+    memberNames: ["Ana", "Kenji", "Yui"],
+  });
+  const [ana, kenji, yui] = group.members.map((m) => m.id);
+
+  for (const expense of [
+    { description: "Hotel", amount: "90000", date: "2026-09-10", payerId: ana },
+    {
+      description: "Ramen",
+      amount: "3600",
+      date: "2026-09-11",
+      payerId: kenji,
+    },
+  ]) {
+    written(
+      await addExpense(db, link, {
+        ...expense,
+        participantIds: [ana, kenji, yui],
+      })
+    );
+  }
+  written(
+    await addSettlement(db, link, {
+      fromId: yui,
+      toId: ana,
+      amount: "30000",
+      date: "2026-09-15",
+    })
+  );
 }
 
 /** Deletes the group at `link`, if there is one, and creates it afresh there. */

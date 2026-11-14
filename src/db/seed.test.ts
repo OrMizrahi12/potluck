@@ -89,3 +89,23 @@ describe("the seeded ski cabin", () => {
     ]);
   });
 });
+
+describe("the seeded group in yen", () => {
+  // Yen has no minor units. The hotel, ¥90,000 by Ana, and ramen, ¥3,600 by
+  // Kenji, each among all three (¥30,000 and ¥1,200 each): Ana +58,800,
+  // Kenji −27,600, Yui −31,200. Yui pays Ana ¥30,000: Ana +28,800, Yui −1,200.
+  it("is in yen, with amounts in whole yen", async () => {
+    const view = await seededGroup(SEED_LINKS.yenGroup);
+
+    expect([view.currency, view.digits]).toEqual(["JPY", 0]);
+    expect(view.expenses.map((e) => [e.description, e.amount])).toEqual([
+      ["Ramen", 3600],
+      ["Hotel", 90000],
+    ]);
+    expect(balancesByName(view)).toEqual([
+      ["Ana", 28800],
+      ["Kenji", -27600],
+      ["Yui", -1200],
+    ]);
+  });
+});
