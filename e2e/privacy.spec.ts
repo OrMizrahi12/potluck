@@ -28,6 +28,40 @@ test("every page links to the privacy page", async ({ page }) => {
   }
 });
 
+test("a visit asks nothing of other sites and sets no cookies", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const appHost = new URL(baseURL!).host;
+  const elsewhere: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.protocol !== "data:" && url.host !== appHost)
+      elsewhere.push(request.url());
+  });
+
+  const groupLink = await createGroup(page, `No trackers ${Date.now()}`);
+  await page.goto(groupLink);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Privacy");
+
+  expect(elsewhere, "requests to other hosts").toEqual([]);
+  expect(await context.cookies(), "cookies").toEqual([]);
+});
+
+test("a group page asks search engines not to list it", async ({ page }) => {
+  const groupLink = await createGroup(page, `Noindex ${Date.now()}`);
+
+  await page.goto(groupLink);
+
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+    "content",
+    /\bnoindex\b/
+  );
+});
+
 test("the privacy page says what's stored and that the link is the key", async ({
   page,
 }) => {
