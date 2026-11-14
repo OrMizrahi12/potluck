@@ -10,6 +10,12 @@ import {
 
 type Member = { id: string; name: string };
 
+type MemberWithBalance = Member & {
+  balance: number;
+  /** The balance's size, formatted in the group's currency. */
+  amount: string;
+};
+
 /** One button per member; choosing one makes it this device's member in the group. */
 function MemberChoice({
   token,
@@ -86,7 +92,7 @@ export function WhoAreYou({
 }: {
   token: string;
   name: string;
-  members: Member[];
+  members: MemberWithBalance[];
 }) {
   useEffect(() => rememberGroup({ token, name }), [token, name]);
   const claim = useClaim(
@@ -119,7 +125,7 @@ function YouMenu({
 }: {
   token: string;
   members: Member[];
-  you: Member | undefined;
+  you: MemberWithBalance | undefined;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -128,6 +134,8 @@ function YouMenu({
       <div className="row">
         <p className="name">
           {you ? `You are ${you.name}.` : "You haven't said who you are."}
+          {you && " "}
+          {you && <YourBalance you={you} />}
         </p>
         <button
           type="button"
@@ -148,4 +156,12 @@ function YouMenu({
       )}
     </section>
   );
+}
+
+function YourBalance({ you }: { you: MemberWithBalance }) {
+  if (you.balance > 0)
+    return <strong className="owed">You are owed {you.amount}.</strong>;
+  if (you.balance < 0)
+    return <strong className="owes">You owe {you.amount}.</strong>;
+  return <strong>You are settled up.</strong>;
 }

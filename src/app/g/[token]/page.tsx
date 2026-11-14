@@ -46,7 +46,12 @@ async function Group({ token, shown }: { token: string; shown: number }) {
       <WhoAreYou
         token={token}
         name={group.name}
-        members={group.members.map(({ id, name }) => ({ id, name }))}
+        members={group.members.map(({ id, name, balance }) => ({
+          id,
+          name,
+          balance,
+          amount: money(Math.abs(balance)),
+        }))}
       />
       <p>
         Currency: {group.currency}

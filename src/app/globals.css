@@ -240,6 +240,9 @@ a.button.secondary {
 
 .you {
   margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .you p {

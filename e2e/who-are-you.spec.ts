@@ -99,6 +99,36 @@ test("change who you are from the menu, separately in each group", async ({
   expect(errors, "browser errors").toEqual([]);
 });
 
+test("your own balance is called out as what you owe or are owed", async ({
+  page,
+}, testInfo) => {
+  const errors = watchForErrors(page);
+  const you = page.getByRole("region", { name: "You in this group" });
+  await createGroup(page, {
+    name: `Picnic (${testInfo.project.name} ${Date.now()})`,
+    currency: "EUR",
+    memberNames: ["Ana", "Ben"],
+  });
+  await sayWhoYouAre(page, "Ben");
+  await expect(you).toContainText("You are settled up.");
+
+  // Ben pays €10.00 split between Ana and Ben: €5.00 each, so Ben is owed €5.00.
+  await page.getByRole("link", { name: "Add an expense" }).click();
+  await page.getByLabel("Description").fill("Bread and cheese");
+  await page.getByLabel("Amount (EUR)").fill("10");
+  await page.getByRole("button", { name: "Add expense" }).click();
+
+  await expect(you).toContainText("You are owed €5.00.");
+  await expectNoSidewaysScroll(page);
+  await screenshot(page, testInfo, "6-you-are-owed");
+
+  await you.getByRole("button", { name: "Change" }).click();
+  await you.getByRole("button", { name: "Ana" }).click();
+  await expect(you).toContainText("You owe €5.00.");
+
+  expect(errors, "browser errors").toEqual([]);
+});
+
 test("skip the question to look around, but answer it before adding an expense", async ({
   page,
 }, testInfo) => {
