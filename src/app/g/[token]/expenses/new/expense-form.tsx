@@ -1,8 +1,10 @@
 "use client";
 
 import { useActionState, useState, useSyncExternalStore } from "react";
+import { useClaim } from "@/device/store";
 import { LIMITS } from "@/group/limits";
 import type { AddExpenseRefusal } from "@/group/service";
+import { WhoAreYouPrompt } from "../../who-are-you";
 import type { AddExpenseFormState } from "./actions";
 
 type Member = { id: string; name: string; active: boolean };
@@ -65,6 +67,7 @@ function message(
 
 export function ExpenseForm({
   action,
+  token,
   currency,
   digits,
   members,
@@ -73,6 +76,7 @@ export function ExpenseForm({
     previous: AddExpenseFormState,
     form: FormData
   ) => Promise<AddExpenseFormState>;
+  token: string;
   currency: string;
   digits: number;
   members: Member[];
@@ -81,7 +85,13 @@ export function ExpenseForm({
   // Controlled, so a refused submission keeps what was typed.
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [payerId, setPayerId] = useState("");
+  // The payer defaults to the member this device claims in the group.
+  const [payerId, setPayerId] = useState<string>();
+  const claim = useClaim(
+    token,
+    members.map((m) => m.id)
+  );
+  const claimed = claim?.claimed;
   const [participantIds, setParticipantIds] = useState(
     () => new Set(members.filter((m) => m.active).map((m) => m.id))
   );
@@ -95,6 +105,17 @@ export function ExpenseForm({
     else next.delete(id);
     setParticipantIds(next);
   }
+
+  // Which member this device is lives only in the browser, so the form
+  // waits for it; an expense can't be added before it's answered.
+  if (!claim) return null;
+  if (!claimed)
+    return (
+      <WhoAreYouPrompt token={token} members={members} skippable={false}>
+        Say which member you are before adding an expense. It&apos;s only
+        remembered on this device.
+      </WhoAreYouPrompt>
+    );
 
   return (
     <form action={formAction} className="stack" aria-label="Add an expense">
@@ -139,7 +160,7 @@ export function ExpenseForm({
         <select
           name="payer"
           required
-          value={payerId}
+          value={payerId ?? claimed ?? ""}
           onChange={(e) => setPayerId(e.target.value)}
         >
           <option value="" disabled>

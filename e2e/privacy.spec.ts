@@ -100,6 +100,8 @@ test("the privacy page says what's stored and that the link is the key", async (
 
   const main = page.getByRole("main");
   await expect(main).toContainText("What Potluck stores");
+  await expect(main).toContainText("What stays on your device");
+  await expect(main).toContainText("is never sent to Potluck");
   await expect(main).toContainText(
     "Anyone with a group's link has full control of the group"
   );

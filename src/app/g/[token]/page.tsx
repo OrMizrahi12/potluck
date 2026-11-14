@@ -13,6 +13,7 @@ import {
 import { formatAmount, formatDate } from "@/money/format";
 import { visitorLocale } from "../../locale";
 import { GroupLink } from "./group-link";
+import { WhoAreYou } from "./who-are-you";
 
 export const metadata: Metadata = {
   title: "Group · Potluck",
@@ -42,6 +43,16 @@ async function Group({ token, shown }: { token: string; shown: number }) {
   return (
     <>
       <h1>{group.name}</h1>
+      <WhoAreYou
+        token={token}
+        name={group.name}
+        members={group.members.map(({ id, name, balance }) => ({
+          id,
+          name,
+          balance,
+          amount: money(Math.abs(balance)),
+        }))}
+      />
       <p>
         Currency: {group.currency}
         {currency && ` · ${currency.name}`}

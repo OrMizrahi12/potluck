@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   createGroup,
   expectNoSidewaysScroll,
+  sayWhoYouAre,
   screenshot,
   watchForErrors,
 } from "./helpers";
@@ -29,6 +30,7 @@ test("add a yen expense and see shares and balances with no decimals", async ({
     currency: "JPY",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(page, "Ana");
   await expect(balances(page)).toHaveText([
     "Ana settled up",
     "Ben settled up",
@@ -100,6 +102,7 @@ test("add a forint gift and see two decimals, as ISO 4217 has it", async ({
     currency: "HUF",
     memberNames: ["Ana", "Ben", "Chloé"],
   });
+  await sayWhoYouAre(page, "Chloé");
 
   await test.step("an amount too small to split is refused", async () => {
     await page.getByRole("link", { name: "Add an expense" }).click();
