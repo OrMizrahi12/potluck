@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { findCurrency, type Currency } from "../currency/currencies";
 import {
   expenseParticipants,
@@ -158,8 +158,8 @@ export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
   return group !== undefined;
 }
 
-export type AddExpenseRefusal =
-  | "group-unknown"
+/** Why an expense's description, amount, date, payer or participants can't be recorded. */
+export type ExpenseRefusal =
   | "description-missing"
   | "description-too-long"
   | "amount-unreadable"
@@ -169,8 +169,10 @@ export type AddExpenseRefusal =
   | "payer-unknown"
   | "participant-unknown"
   | "participants-only-payer"
-  | "amount-too-small-to-split"
-  | "too-many-expenses";
+  | "amount-too-small-to-split";
+
+export type AddExpenseRefusal =
+  "group-unknown" | ExpenseRefusal | "too-many-expenses";
 
 export type AddExpenseInput = {
   description: string;
@@ -192,42 +194,12 @@ export async function addExpense(
   input: AddExpenseInput
 ): Promise<CommandResult<AddExpenseRefusal>> {
   if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
-  const description = cleanName(input.description);
-  if (description === "") return refuse("description-missing");
-  if (description.length > LIMITS.descriptionLength)
-    return refuse("description-too-long");
-  if (!isCalendarDate(input.date)) return refuse("date-unreadable");
 
   const refusal = await db.transaction(async (tx) => {
-    // Locking the group row serializes its writers, so two expenses added at
-    // once can't both slip under the cap.
-    const [group] = await tx
-      .select({ id: groups.id, currency: groups.currency })
-      .from(groups)
-      .where(eq(groups.linkToken, linkToken))
-      .for("update");
+    const group = await lockGroup(tx, linkToken);
     if (!group) return "group-unknown" as const;
-    const digits = currencyOf(group.currency).digits;
-
-    const amount = readAmount(input.amount, digits);
-    if (typeof amount === "string") return amount;
-
-    const memberIds = new Set(
-      (
-        await tx
-          .select({ id: members.id })
-          .from(members)
-          .where(eq(members.groupId, group.id))
-      ).map((m) => m.id)
-    );
-    if (!memberIds.has(input.payerId)) return "payer-unknown" as const;
-    const participantIds = [...new Set(input.participantIds)];
-    if (participantIds.some((id) => !memberIds.has(id)))
-      return "participant-unknown" as const;
-    if (!participantIds.some((id) => id !== input.payerId))
-      return "participants-only-payer" as const;
-    if (amount < participantIds.length)
-      return "amount-too-small-to-split" as const;
+    const expense = await checkExpense(tx, group, input);
+    if (typeof expense === "string") return expense;
 
     const [{ count }] = await tx
       .select({ count: sql<number>`count(*)::int` })
@@ -235,28 +207,144 @@ export async function addExpense(
       .where(eq(expenses.groupId, group.id));
     if (count >= LIMITS.expenses) return "too-many-expenses" as const;
 
-    const [expense] = await tx
+    const { participantIds, ...fields } = expense;
+    const [added] = await tx
       .insert(expenses)
-      .values({
-        groupId: group.id,
-        description,
-        amount,
-        date: input.date,
-        payerId: input.payerId,
-      })
+      .values({ groupId: group.id, ...fields })
       .returning({ id: expenses.id });
     await tx
       .insert(expenseParticipants)
       .values(
-        participantIds.map((memberId) => ({ expenseId: expense.id, memberId }))
+        participantIds.map((memberId) => ({ expenseId: added.id, memberId }))
       );
     return undefined;
   });
   if (refusal) return refuse(refusal);
+  return { ok: true, view: await readWrittenGroup(db, linkToken) };
+}
 
+export type EditExpenseRefusal =
+  "group-unknown" | "expense-unknown" | ExpenseRefusal;
+
+export type EditExpenseInput = AddExpenseInput & {
+  expenseId: string;
+  /** The expense's version the edit was made from. */
+  version: number;
+};
+
+/**
+ * Replaces an expense's description, amount, date, payer and participants,
+ * under the same rules as adding it. Its id never changes, so the odd-cent
+ * rule may hand a leftover unit to a participant the edit didn't touch.
+ */
+export async function editExpense(
+  db: Db,
+  linkToken: string,
+  input: EditExpenseInput
+): Promise<CommandResult<EditExpenseRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.expenseId)) return refuse("expense-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const expense = await checkExpense(tx, group, input);
+    if (typeof expense === "string") return expense;
+
+    const { participantIds, ...fields } = expense;
+    const [edited] = await tx
+      .update(expenses)
+      .set({ ...fields, version: sql`${expenses.version} + 1` })
+      .where(
+        and(eq(expenses.id, input.expenseId), eq(expenses.groupId, group.id))
+      )
+      .returning({ id: expenses.id });
+    if (!edited) return "expense-unknown" as const;
+    await tx
+      .delete(expenseParticipants)
+      .where(eq(expenseParticipants.expenseId, edited.id));
+    await tx
+      .insert(expenseParticipants)
+      .values(
+        participantIds.map((memberId) => ({ expenseId: edited.id, memberId }))
+      );
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readWrittenGroup(db, linkToken) };
+}
+
+/**
+ * Locks a group's row for the rest of the transaction, which serializes its
+ * writers: two expenses added at once can't both slip under the cap.
+ */
+async function lockGroup(
+  tx: Db,
+  linkToken: string
+): Promise<{ id: string; currency: string } | undefined> {
+  const [group] = await tx
+    .select({ id: groups.id, currency: groups.currency })
+    .from(groups)
+    .where(eq(groups.linkToken, linkToken))
+    .for("update");
+  return group;
+}
+
+/** An expense as it will be stored, or why the group's rules refuse it. */
+async function checkExpense(
+  tx: Db,
+  group: { id: string; currency: string },
+  input: AddExpenseInput
+): Promise<
+  | {
+      description: string;
+      amount: number;
+      date: string;
+      payerId: string;
+      participantIds: string[];
+    }
+  | ExpenseRefusal
+> {
+  const description = cleanName(input.description);
+  if (description === "") return "description-missing";
+  if (description.length > LIMITS.descriptionLength)
+    return "description-too-long";
+  if (!isCalendarDate(input.date)) return "date-unreadable";
+
+  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  if (typeof amount === "string") return amount;
+
+  const memberIds = await memberIdsOf(tx, group.id);
+  if (!memberIds.has(input.payerId)) return "payer-unknown";
+  const participantIds = [...new Set(input.participantIds)];
+  if (participantIds.some((id) => !memberIds.has(id)))
+    return "participant-unknown";
+  if (!participantIds.some((id) => id !== input.payerId))
+    return "participants-only-payer";
+  if (amount < participantIds.length) return "amount-too-small-to-split";
+
+  return {
+    description,
+    amount,
+    date: input.date,
+    payerId: input.payerId,
+    participantIds,
+  };
+}
+
+async function memberIdsOf(tx: Db, groupId: string): Promise<Set<string>> {
+  const rows = await tx
+    .select({ id: members.id })
+    .from(members)
+    .where(eq(members.groupId, groupId));
+  return new Set(rows.map((m) => m.id));
+}
+
+/** The group view right after a write that succeeded. */
+async function readWrittenGroup(db: Db, linkToken: string): Promise<GroupView> {
   const view = await readGroupView(db, linkToken);
   if (!view) throw new Error("A group just written could not be read back.");
-  return { ok: true, view };
+  return view;
 }
 
 export type AddSettlementRefusal =
@@ -507,6 +595,10 @@ function cleanName(name: string): string {
 function nameKey(cleanedName: string): string {
   return cleanedName.toLowerCase();
 }
+
+/** A UUID's text: what the database assigns as expense and settlement ids. */
+const UUID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What newLinkToken() makes: 16 bytes in unpadded base64url. */
 const LINK_TOKEN_SHAPE = /^[A-Za-z0-9_-]{22}$/;
