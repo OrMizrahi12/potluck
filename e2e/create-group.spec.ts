@@ -1,31 +1,5 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
-
-/** Saves a full-page screenshot to the test's output folder and attaches it to the report. */
-async function screenshot(page: Page, testInfo: TestInfo, name: string) {
-  const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true });
-  await testInfo.attach(name, { path, contentType: "image/png" });
-}
-
-/** Collects console errors and uncaught exceptions (e.g. hydration mismatches), which the server's log never sees. */
-function watchForErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
-  return errors;
-}
-
-/** The page fits the viewport's width: nothing scrolls sideways. */
-async function expectNoSidewaysScroll(page: Page) {
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth
-  );
-  expect(overflow, "page wider than the viewport").toBe(0);
-}
+import { expect, test } from "@playwright/test";
+import { expectNoSidewaysScroll, screenshot, watchForErrors } from "./helpers";
 
 test("create a group, copy its link, open it and see the members", async ({
   page,
@@ -81,7 +55,9 @@ test("create a group, copy its link, open it and see the members", async ({
       groupName
     );
     await expect(visitor.getByText("Currency: EUR · Euro")).toBeVisible();
-    await expect(visitor.getByRole("listitem")).toHaveText(memberNames);
+    await expect(
+      visitor.getByRole("list", { name: "Balances" }).getByRole("listitem")
+    ).toHaveText(memberNames.map((name) => `${name} settled up`));
     await expectNoSidewaysScroll(visitor);
     await screenshot(visitor, testInfo, "3-link-opened-elsewhere");
 
