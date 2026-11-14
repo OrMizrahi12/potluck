@@ -498,6 +498,40 @@ export async function editSettlement(
   return { ok: true, view: await readWrittenGroup(db, linkToken) };
 }
 
+export type DeleteSettlementRefusal =
+  "group-unknown" | "settlement-unknown" | "stale-version";
+
+/**
+ * Deletes a settlement for good: there's no undo. Refused as stale when the
+ * settlement has changed since `version`.
+ */
+export async function deleteSettlement(
+  db: Db,
+  linkToken: string,
+  input: { settlementId: string; version: number }
+): Promise<CommandResult<DeleteSettlementRefusal>> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return refuse("group-unknown");
+  if (!UUID_SHAPE.test(input.settlementId)) return refuse("settlement-unknown");
+
+  const refusal = await db.transaction(async (tx) => {
+    const group = await lockGroup(tx, linkToken);
+    if (!group) return "group-unknown" as const;
+    const stored = await storedVersion(
+      tx,
+      settlements,
+      group.id,
+      input.settlementId
+    );
+    if (stored === undefined) return "settlement-unknown" as const;
+    if (stored !== input.version) return "stale-version" as const;
+
+    await tx.delete(settlements).where(eq(settlements.id, input.settlementId));
+    return undefined;
+  });
+  if (refusal) return refuse(refusal);
+  return { ok: true, view: await readWrittenGroup(db, linkToken) };
+}
+
 /** A settlement as it will be stored, or why the group's rules refuse it. */
 async function checkSettlement(
   tx: Db,
