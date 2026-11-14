@@ -54,3 +54,38 @@ describe("the seeded flat share", () => {
     );
   });
 });
+
+describe("the seeded ski cabin", () => {
+  // The cabin, 1,200.00 by Eva among all four: Eva +900.00, the others −300.00.
+  // Finn pays Eva 100.00, then 150.00: two partial settlements, still −50.00.
+  // Gal pays Eva 400.00, 100.00 more than she owed: Gal +100.00.
+  // Hana lends Finn 200.00, recorded from Hana to Finn: Hana −100.00, Finn −250.00.
+  // So Eva +250.00, Finn −250.00, Gal +100.00, Hana −100.00.
+  it("has partial settlements, an overpayment and a loan", async () => {
+    const view = await seededGroup(SEED_LINKS.skiCabin);
+    const names = new Map(view.members.map((m) => [m.id, m.name]));
+    const named = (s: { fromId: string; toId: string; amount: number }) => [
+      names.get(s.fromId),
+      names.get(s.toId),
+      s.amount,
+    ];
+
+    expect(view.currency).toBe("USD");
+    expect(view.settlements.map(named)).toEqual([
+      ["Hana", "Finn", 20000],
+      ["Gal", "Eva", 40000],
+      ["Finn", "Eva", 15000],
+      ["Finn", "Eva", 10000],
+    ]);
+    expect(balancesByName(view)).toEqual([
+      ["Eva", 25000],
+      ["Finn", -25000],
+      ["Gal", 10000],
+      ["Hana", -10000],
+    ]);
+    expect(view.suggestedSettlements.map(named)).toEqual([
+      ["Finn", "Eva", 25000],
+      ["Hana", "Gal", 10000],
+    ]);
+  });
+});

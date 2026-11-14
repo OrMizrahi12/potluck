@@ -17,6 +17,7 @@ import type { Db } from "./types";
  */
 export const SEED_LINKS = {
   flatShare: "seed-flat-share-eur-01",
+  skiCabin: "seed-ski-cabin-usd-001",
 } as const;
 
 /**
@@ -36,6 +37,7 @@ export async function seed(db: Db): Promise<void> {
     .onConflictDoNothing();
 
   await seedFlatShare(db);
+  await seedSkiCabin(db);
 }
 
 /** An inactive member who still owes the group, and a payer who isn't a participant. */
@@ -104,6 +106,38 @@ async function seedFlatShare(db: Db) {
       active: false,
     })
   );
+}
+
+/** Partial settlements, an overpayment, and a loan from lender to borrower. */
+async function seedSkiCabin(db: Db) {
+  const link = SEED_LINKS.skiCabin;
+  const group = await recreate(db, link, {
+    name: "Ski cabin",
+    currency: "USD",
+    memberNames: ["Eva", "Finn", "Gal", "Hana"],
+  });
+  const [eva, finn, gal, hana] = group.members.map((m) => m.id);
+
+  written(
+    await addExpense(db, link, {
+      description: "Cabin",
+      amount: "1200.00",
+      date: "2026-12-01",
+      payerId: eva,
+      participantIds: [eva, finn, gal, hana],
+    })
+  );
+  for (const settlement of [
+    // Finn pays what he owes in parts, and isn't done yet.
+    { fromId: finn, toId: eva, amount: "100.00", date: "2026-12-02" },
+    { fromId: finn, toId: eva, amount: "150.00", date: "2026-12-05" },
+    // Gal pays 100.00 more than she owes.
+    { fromId: gal, toId: eva, amount: "400.00", date: "2026-12-06" },
+    // A loan: Hana lends Finn 200.00.
+    { fromId: hana, toId: finn, amount: "200.00", date: "2026-12-08" },
+  ]) {
+    written(await addSettlement(db, link, settlement));
+  }
 }
 
 /** Deletes the group at `link`, if there is one, and creates it afresh there. */
