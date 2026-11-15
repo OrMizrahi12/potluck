@@ -6,6 +6,17 @@
 
 Our one change: the Standards and Spec sub-agent briefs in `SKILL.md` each end with "Do not invoke `/code-review` or spawn additional agents: perform this review directly."
 
+Re-pinning the skill (moving `ref` in `skills-lock.json` and copying the upstream files again) overwrites `SKILL.md` and drops that sentence without warning. Without it, a sub-agent can call `/code-review` again and the review recurses. When you re-pin:
+
+- add the sentence back to the end of both briefs;
+- check it's back: this command prints `2`;
+
+  ```sh
+  grep -c 'Do not invoke `/code-review` or spawn additional agents' .claude/skills/code-review/SKILL.md
+  ```
+
+- update the pinned commit in this file to match `ref` in `skills-lock.json`.
+
 ```
 MIT License
 
