@@ -304,3 +304,13 @@ a.button.secondary {
 .prompt h3 {
   margin: 0;
 }
+
+/* The currency picker sits beside the amount; it shows its code and clips the name. */
+.amount-row > .currency-picker {
+  flex: none;
+  width: 7.5rem;
+}
+
+.quiet-line {
+  overflow-wrap: anywhere;
+}

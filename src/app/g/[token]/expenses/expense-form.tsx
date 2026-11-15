@@ -4,6 +4,13 @@ import { useActionState, useState, useSyncExternalStore } from "react";
 import { useClaim } from "@/device/store";
 import { LIMITS } from "@/group/limits";
 import type { AddExpenseRefusal, EditExpenseRefusal } from "@/group/service";
+import { formatAmount } from "@/money/format";
+import {
+  AmountField,
+  useAmountField,
+  type AmountFieldState,
+  type InitialForeignPart,
+} from "../amount-field";
 import { Refusal, STALE_MESSAGE } from "../refusal";
 import { WhoAreYouPrompt } from "../who-are-you";
 
@@ -29,18 +36,42 @@ function example(digits: number): string {
   return digits === 0 ? "1500" : `12.${"5".padEnd(digits, "0")}`;
 }
 
+/**
+ * Why a foreign amount's converted figure can't be recorded, named in the
+ * group currency, so it shows before saving. Nothing is rounded up to get
+ * past it.
+ */
+function conversionProblem(
+  field: AmountFieldState,
+  participants: number,
+  locale: string
+): string | undefined {
+  const { foreignCurrency, groupAmount, currency, digits } = field;
+  if (!foreignCurrency || groupAmount === undefined) return undefined;
+  const money = (minor: number) =>
+    formatAmount(minor, { currency, digits }, locale);
+  if (groupAmount === 0) return `This converts to less than ${money(1)}.`;
+  if (groupAmount > LIMITS.amountMajorUnits * 10 ** digits)
+    return `This converts to more than ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}, the most one expense can be.`;
+  if (groupAmount < participants)
+    return `${money(groupAmount)} is too small to split among ${participants}.`;
+  return undefined;
+}
+
 function message(
   refusal: NonNullable<ExpenseFormState["refusal"]>,
   {
-    currency,
-    digits,
+    field,
     participants,
+    locale,
   }: {
-    currency: string;
-    digits: number;
+    field: AmountFieldState;
     participants: number;
+    locale: string;
   }
 ): string {
+  const { currency, digits, foreignCurrency } = field;
+  const typedDigits = foreignCurrency?.digits ?? digits;
   switch (refusal) {
     case "group-unknown":
       return "This group doesn't exist any more.";
@@ -53,13 +84,33 @@ function message(
     case "description-too-long":
       return `Keep the description to ${LIMITS.descriptionLength} characters.`;
     case "amount-unreadable":
-      return digits === 0
+    case "foreign-amount-unreadable":
+      return typedDigits === 0
         ? `Type the amount as a whole number, like ${example(0)}.`
-        : `Type the amount as a number with up to ${digits} decimals, like ${example(digits)}.`;
+        : `Type the amount as a number with up to ${typedDigits} decimals, like ${example(typedDigits)}.`;
     case "amount-not-positive":
+      return (
+        conversionProblem(field, participants, locale) ??
+        "The amount must be more than zero."
+      );
+    case "foreign-amount-not-positive":
       return "The amount must be more than zero.";
     case "amount-too-large":
-      return `An expense can be at most ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}.`;
+      return (
+        conversionProblem(field, participants, locale) ??
+        `An expense can be at most ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}.`
+      );
+    case "foreign-amount-too-large":
+      return "Type the amount with at most 12 digits before the decimal point.";
+    case "foreign-currency-unknown":
+    case "foreign-currency-is-group-currency":
+      return "Pick a currency from the list.";
+    case "exchange-rate-unreadable":
+      return `Type the exchange rate, or what your bank charged in ${currency}.`;
+    case "exchange-rate-not-positive":
+      return "The exchange rate must be more than zero.";
+    case "amount-disagrees-with-rate":
+      return `The amount in ${currency} doesn't match the exchange rate. Check the rate and try again.`;
     case "date-unreadable":
       return "Pick the date of the expense.";
     case "payer-unknown":
@@ -69,7 +120,10 @@ function message(
     case "participants-only-payer":
       return "Choose at least one participant besides the payer.";
     case "amount-too-small-to-split":
-      return `This amount is too small to split among ${participants}.`;
+      return (
+        conversionProblem(field, participants, locale) ??
+        `This amount is too small to split among ${participants}.`
+      );
     case "too-many-expenses":
       return `This group has reached its limit of ${LIMITS.expenses.toLocaleString("en")} expenses.`;
   }
@@ -86,6 +140,7 @@ export function ExpenseForm({
   token,
   currency,
   digits,
+  locale,
   members,
   initial,
 }: {
@@ -96,19 +151,28 @@ export function ExpenseForm({
   token: string;
   currency: string;
   digits: number;
+  /** For amounts shown in the form, as the server formats them. */
+  locale: string;
   members: Member[];
   initial?: {
     description: string;
+    /** In the group currency. */
     amount: string;
     date: string;
     payerId: string;
     participantIds: string[];
+    foreign?: InitialForeignPart;
   };
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled, so a refused submission keeps what was typed.
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const amountField = useAmountField({
+    currency,
+    digits,
+    initialAmount: initial?.amount,
+    initialForeign: initial?.foreign,
+  });
   // A new expense's payer defaults to the member this device claims.
   const [payerId, setPayerId] = useState(initial?.payerId);
   const claim = useClaim(
@@ -134,6 +198,21 @@ export function ExpenseForm({
     else next.delete(id);
     setParticipantIds(next);
   }
+
+  // A converted figure the service would refuse shows as it's typed; a
+  // refusal saying the same after saving isn't repeated.
+  const liveProblem = conversionProblem(
+    amountField,
+    participantIds.size,
+    locale
+  );
+  const refusalText =
+    state.refusal &&
+    message(state.refusal, {
+      field: amountField,
+      participants: state.participants ?? 0,
+      locale,
+    });
 
   const editing = initial !== undefined;
   // Which member this device is lives only in the browser, so adding waits
@@ -168,18 +247,7 @@ export function ExpenseForm({
         />
       </label>
 
-      <label className="field">
-        <span>Amount ({currency})</span>
-        <input
-          name="amount"
-          required
-          inputMode={digits === 0 ? "numeric" : "decimal"}
-          placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
-          autoComplete="off"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
+      <AmountField field={amountField} locale={locale} problem={liveProblem} />
 
       <label className="field">
         <span>Date</span>
@@ -228,14 +296,7 @@ export function ExpenseForm({
       </fieldset>
 
       <Refusal
-        text={
-          state.refusal &&
-          message(state.refusal, {
-            currency,
-            digits,
-            participants: state.participants ?? 0,
-          })
-        }
+        text={refusalText === liveProblem ? undefined : refusalText}
         reload={state.refusal === "stale-version"}
       />
 
