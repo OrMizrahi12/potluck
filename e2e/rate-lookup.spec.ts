@@ -23,9 +23,9 @@ function quietLine(page: Page) {
   return form(page).getByText(/^= €/);
 }
 
-async function startExpense(page: Page, testInfo: TestInfo, trip: string) {
+async function startExpense(page: Page, testInfo: TestInfo, groupName: string) {
   await createGroup(page, {
-    name: `${trip} (${testInfo.project.name} ${Date.now()})`,
+    name: `${groupName} (${testInfo.project.name} ${Date.now()})`,
     currency: "EUR",
     memberNames: ["Ana", "Ben"],
   });

@@ -42,7 +42,7 @@ export function convertBackward(
   rate: string,
   foreignDigits: number
 ): number {
-  const { units, scale } = readRate(rate);
+  const { units, scale } = scaledUnits(rate);
   return Number(
     roundHalfUp(
       BigInt(group.amount) * 10n ** BigInt(scale + foreignDigits),
@@ -98,13 +98,13 @@ export function rateFromBankAmount(
  * a value more than zero.
  */
 export function formatRate(rate: string): string {
-  const { units, scale } = readRate(rate);
+  const { units, scale } = scaledUnits(rate);
   return significant(units, 10n ** BigInt(scale), SHOWN_RATE_DIGITS);
 }
 
 /** foreign × rate in group minor units, as the fraction num / den. */
 function product(foreign: MinorAmount, rate: string, groupDigits: number) {
-  const { units, scale } = readRate(rate);
+  const { units, scale } = scaledUnits(rate);
   return {
     num: BigInt(foreign.amount) * units * 10n ** BigInt(groupDigits),
     den: 10n ** BigInt(foreign.digits + scale),
@@ -112,7 +112,7 @@ function product(foreign: MinorAmount, rate: string, groupDigits: number) {
 }
 
 /** "1.0463" as 10463 units of 10^-4. */
-function readRate(rate: string): { units: bigint; scale: number } {
+function scaledUnits(rate: string): { units: bigint; scale: number } {
   const [whole, fraction = ""] = rate.split(".");
   return { units: BigInt(whole + fraction), scale: fraction.length };
 }

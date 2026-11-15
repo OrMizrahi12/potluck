@@ -137,7 +137,7 @@ export function useAmountField({
       ? workBackwards(
           initialAmount,
           digits,
-          readRate(rateText),
+          plainTypedRate(rateText),
           foreignCurrency.digits
         )
       : undefined;
@@ -158,7 +158,7 @@ export function useAmountField({
         groupAmount = bankMinor;
       }
     } else {
-      rate = readRate(rateText);
+      rate = plainTypedRate(rateText);
       // A saved entry whose foreign amount, currency and rate are untouched
       // keeps its stored group-currency amount: one saved from a worked-
       // backwards suggestion can be a minor unit off converting forward.
@@ -502,7 +502,7 @@ function positive(minor: number | undefined): number | undefined {
  * A typed rate as the plain decimal string the conversion takes ("1,0463" is
  * "1.0463"), or undefined unless it's a number more than zero.
  */
-function readRate(text: string): string | undefined {
+function plainTypedRate(text: string): string | undefined {
   const match = /^(\d*)(?:[.,](\d*))?$/.exec(text.trim());
   if (!match) return undefined;
   const [, whole, fraction = ""] = match;

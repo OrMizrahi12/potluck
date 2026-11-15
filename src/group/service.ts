@@ -510,7 +510,7 @@ function readForeignPart(
   // the cap applies to the converted figure.
   if (amount === Infinity) return "foreign-amount-too-large";
 
-  const rate = readRate(input.rate);
+  const rate = checkExchangeRate(input.rate);
   if (typeof rate !== "string") return rate.refusal;
 
   return {
@@ -528,7 +528,7 @@ const RATE_DIGITS = 30;
  * A typed exchange rate as a plain decimal string ("01.50" is "1.50"), or why
  * it isn't one. Any rate more than zero is accepted, however extreme.
  */
-function readRate(
+function checkExchangeRate(
   text: string
 ):
   | string
