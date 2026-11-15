@@ -60,14 +60,18 @@ test("the log doesn't record a group's link token", async ({ page }) => {
   });
   const token = new URL(page.url()).pathname.split("/").pop()!;
 
-  await page.goto(`/g/${token}`);
-  await expect.poll(loggedSinceStart).toMatch(/GET \/g\/<token> 200/);
+  // Other tests write to the same log at the same time; the query marks this
+  // request's own line, and the mask stops at the `?`.
+  const probe = `probe=${Date.now()}`;
+  await page.goto(`/g/${token}?${probe}`);
+  await expect.poll(loggedSinceStart).toContain(`GET /g/<token>?${probe} 200`);
   expect(loggedSinceStart()).not.toContain(token);
 });
 
-test("the log masks a malformed group link too", async ({ page }) => {
+test("the log masks any path under /g/", async ({ page }) => {
   const loggedSinceStart = watchLog();
-  await page.goto("/g/wp-login.php");
-  await expect.poll(loggedSinceStart).toMatch(/GET \/g\/<token> 404/);
+  const probe = `probe=${Date.now()}`;
+  await page.goto(`/g/wp-login.php?${probe}`);
+  await expect.poll(loggedSinceStart).toContain(`GET /g/<token>?${probe} 404`);
   expect(loggedSinceStart()).not.toContain("wp-login.php");
 });

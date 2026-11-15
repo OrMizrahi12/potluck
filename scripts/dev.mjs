@@ -45,7 +45,7 @@ const child = spawn(
 
 // Clean the log per whole line, so a colour code or a token split across
 // chunks can't leak into it.
-function forLog(line) {
+function cleanLogLine(line) {
   return stripVTControlCharacters(line).replace(
     /\/g\/[^\s?#/]+/g,
     "/g/<token>"
@@ -56,7 +56,7 @@ let pending = "";
 function toLog(text) {
   const lines = (pending + text).split("\n");
   pending = lines.pop() ?? "";
-  for (const line of lines) log.write(forLog(line) + "\n");
+  for (const line of lines) log.write(cleanLogLine(line) + "\n");
 }
 
 for (const [from, to] of [
@@ -77,7 +77,7 @@ for (const signal of ["SIGTERM", "SIGHUP"]) {
 }
 
 child.on("exit", (code, signal) => {
-  if (pending) log.write(forLog(pending) + "\n");
+  if (pending) log.write(cleanLogLine(pending) + "\n");
   // A shell reports death by signal N as exit code 128 + N.
   log.end(() =>
     process.exit(signal ? 128 + constants.signals[signal] : (code ?? 1))
