@@ -296,3 +296,81 @@ test("switch a settlement back to the group currency", async ({
 
   expect(errors).toEqual([]);
 });
+
+test("change who paid a settlement worked backwards, and its yen stay", async ({
+  page,
+}, testInfo) => {
+  const errors = watchForErrors(page);
+  await createGroup(page, {
+    name: `Tokyo trip (${testInfo.project.name} ${Date.now()})`,
+    currency: "JPY",
+    memberNames: ["Ana", "Ben", "Cai"],
+  });
+  await sayWhoYouAre(page, "Ana");
+  const record = "Record a settlement";
+  const edit = "Edit the settlement";
+
+  await test.step("Ana pays ¥3006 for all three", async () => {
+    await page.getByRole("link", { name: "Add an expense" }).click();
+    await page.getByLabel("Description").fill("Ramen");
+    await page.getByLabel("Amount (JPY)").fill("3006");
+    await page.getByRole("button", { name: "Add expense" }).click();
+    await expect(balances(page)).toHaveText([
+      "Ana is owed ¥2,004",
+      "Ben owes ¥1,002",
+      "Cai owes ¥1,002",
+    ]);
+  });
+
+  await test.step("Ben's suggested ¥1002 is worked backwards into dollars", async () => {
+    await page
+      .getByRole("list", { name: "Suggested settlements" })
+      .getByRole("listitem")
+      .filter({ hasText: "Ben pays Ana" })
+      .getByRole("link", { name: "Record this settlement" })
+      .click();
+    await form(page, record).getByLabel("Currency").selectOption("USD");
+    await form(page, record)
+      .getByRole("button", {
+        name: /^(Type the rate instead|Use another rate or my bank's amount)$/,
+      })
+      .click();
+    await form(page, record)
+      .getByLabel("Exchange rate (1 USD = ? JPY)")
+      .fill("150.37");
+    // ¥1002 ÷ 150.37 = 6.6635… USD, proposed as $6.66; the suggested ¥1002
+    // stays, though $6.66 × 150.37 = 1001.46… converts forward to ¥1001.
+    await expect(form(page, record).getByLabel("Amount (USD)")).toHaveValue(
+      "6.66"
+    );
+    await form(page, record)
+      .getByRole("button", { name: "Record settlement" })
+      .click();
+    await expect(balances(page)).toHaveText([
+      "Ana is owed ¥1,002",
+      "Ben settled up",
+      "Cai owes ¥1,002",
+    ]);
+  });
+
+  await test.step("say Cai paid it instead: the ¥1002 moves with it", async () => {
+    await settlementRows(page).getByRole("link", { name: /^Edit/ }).click();
+    await expect(form(page, edit).getByText(/^= ¥/)).toHaveText(
+      "= ¥1,002 · 1 USD = 150.37 JPY · saved rate"
+    );
+    await form(page, edit).getByLabel("From").selectOption({ label: "Cai" });
+    await form(page, edit)
+      .getByRole("button", { name: "Save changes" })
+      .click();
+    await expect(settlementRows(page).first()).toContainText(
+      /Cai paid Ana ¥1,002 \(\$6\.66\)/
+    );
+    await expect(balances(page)).toHaveText([
+      "Ana is owed ¥1,002",
+      "Ben owes ¥1,002",
+      "Cai settled up",
+    ]);
+  });
+
+  expect(errors).toEqual([]);
+});

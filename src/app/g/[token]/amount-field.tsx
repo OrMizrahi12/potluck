@@ -159,7 +159,19 @@ export function useAmountField({
       }
     } else {
       rate = readRate(rateText);
-      if (foreign && rate) groupAmount = convertForward(foreign, rate, digits);
+      // A saved entry whose foreign amount, currency and rate are untouched
+      // keeps its stored group-currency amount: one saved from a worked-
+      // backwards suggestion can be a minor unit off converting forward.
+      const conversionUntouched =
+        initialForeign !== undefined &&
+        paidIn === initialForeign.currency &&
+        typed === initialForeign.amount &&
+        rateText === initialForeign.rate;
+      if (foreign && rate)
+        groupAmount =
+          (conversionUntouched &&
+            positive(parseAmount(initialAmount, digits))) ||
+          convertForward(foreign, rate, digits);
     }
     // Converting forward again can be a minor unit off: the suggested
     // figure stays, so saving settles both members up exactly.
