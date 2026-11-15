@@ -6,6 +6,13 @@ import type {
   AddSettlementRefusal,
   EditSettlementRefusal,
 } from "@/group/service";
+import { formatAmount } from "@/money/format";
+import {
+  AmountField,
+  useAmountField,
+  type AmountFieldState,
+  type InitialForeignPart,
+} from "../amount-field";
 import { Refusal, STALE_MESSAGE } from "../refusal";
 
 type Member = { id: string; name: string };
@@ -28,10 +35,30 @@ function example(digits: number): string {
   return digits === 0 ? "1500" : `12.${"5".padEnd(digits, "0")}`;
 }
 
+/**
+ * Why a foreign amount's converted figure can't be recorded, named in the
+ * group currency, so it shows before saving. Nothing is rounded up to get
+ * past it.
+ */
+function conversionProblem(
+  field: AmountFieldState,
+  locale: string
+): string | undefined {
+  const { foreignCurrency, groupAmount, currency, digits } = field;
+  if (!foreignCurrency || groupAmount === undefined) return undefined;
+  if (groupAmount === 0)
+    return `This converts to less than ${formatAmount(1, { currency, digits }, locale)}.`;
+  if (groupAmount > LIMITS.amountMajorUnits * 10 ** digits)
+    return `This converts to more than ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}, the most one settlement can be. Record a larger one in parts.`;
+  return undefined;
+}
+
 function message(
   refusal: NonNullable<SettlementFormState["refusal"]>,
-  { currency, digits }: { currency: string; digits: number }
+  { field, locale }: { field: AmountFieldState; locale: string }
 ): string {
+  const { currency, digits, foreignCurrency } = field;
+  const typedDigits = foreignCurrency?.digits ?? digits;
   switch (refusal) {
     case "group-unknown":
       return "This group doesn't exist any more.";
@@ -40,13 +67,33 @@ function message(
     case "stale-version":
       return STALE_MESSAGE;
     case "amount-unreadable":
-      return digits === 0
+    case "foreign-amount-unreadable":
+      return typedDigits === 0
         ? `Type the amount as a whole number, like ${example(0)}.`
-        : `Type the amount as a number with up to ${digits} decimals, like ${example(digits)}.`;
+        : `Type the amount as a number with up to ${typedDigits} decimals, like ${example(typedDigits)}.`;
     case "amount-not-positive":
+    case "foreign-amount-converts-to-zero":
+      return (
+        conversionProblem(field, locale) ?? "The amount must be more than zero."
+      );
+    case "foreign-amount-not-positive":
       return "The amount must be more than zero.";
     case "amount-too-large":
-      return `A settlement can be at most ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}. Record a larger one in parts.`;
+      return (
+        conversionProblem(field, locale) ??
+        `A settlement can be at most ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}. Record a larger one in parts.`
+      );
+    case "foreign-amount-too-large":
+      return "Type the amount with at most 12 digits before the decimal point.";
+    case "foreign-currency-unknown":
+    case "foreign-currency-is-group-currency":
+      return "Pick a currency from the list.";
+    case "exchange-rate-unreadable":
+      return `Type the exchange rate, or what your bank charged in ${currency}.`;
+    case "exchange-rate-not-positive":
+      return "The exchange rate must be more than zero.";
+    case "amount-disagrees-with-rate":
+      return `The amount in ${currency} doesn't match the exchange rate. Check the rate and try again.`;
     case "date-unreadable":
       return "Pick the date of the settlement.";
     case "from-unknown":
@@ -67,8 +114,10 @@ function message(
  */
 export function SettlementForm({
   action,
+  token,
   currency,
   digits,
+  locale,
   members,
   initial,
   editing = false,
@@ -77,22 +126,45 @@ export function SettlementForm({
     previous: SettlementFormState,
     form: FormData
   ) => Promise<SettlementFormState>;
+  token: string;
   currency: string;
   digits: number;
+  /** For amounts shown in the form, as the server formats them. */
+  locale: string;
   members: Member[];
   /** The amount is as typed: "12.34". Without a date, it's today. */
-  initial: { fromId: string; toId: string; amount: string; date?: string };
+  initial: {
+    fromId: string;
+    toId: string;
+    /** In the group currency. */
+    amount: string;
+    date?: string;
+    foreign?: InitialForeignPart;
+  };
   editing?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled, so a refused submission keeps what was typed.
   const [fromId, setFromId] = useState(initial.fromId);
   const [toId, setToId] = useState(initial.toId);
-  const [amount, setAmount] = useState(initial.amount);
   // A new settlement's date defaults to today where the member is, which only
   // the browser knows.
   const [date, setDate] = useState(initial.date);
   const todayHere = useSyncExternalStore(noSubscription, today, () => "");
+  const amountField = useAmountField({
+    token,
+    currency,
+    digits,
+    date: date ?? todayHere,
+    initialAmount: initial.amount,
+    initialForeign: initial.foreign,
+  });
+
+  // A converted figure the service would refuse shows as it's typed; a
+  // refusal saying the same after saving isn't repeated.
+  const liveProblem = conversionProblem(amountField, locale);
+  const refusalText =
+    state.refusal && message(state.refusal, { field: amountField, locale });
 
   return (
     <form
@@ -138,18 +210,7 @@ export function SettlementForm({
         </select>
       </label>
 
-      <label className="field">
-        <span>Amount ({currency})</span>
-        <input
-          name="amount"
-          required
-          inputMode={digits === 0 ? "numeric" : "decimal"}
-          placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
-          autoComplete="off"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
+      <AmountField field={amountField} locale={locale} problem={liveProblem} />
 
       <label className="field">
         <span>Date</span>
@@ -158,12 +219,15 @@ export function SettlementForm({
           type="date"
           required
           value={date ?? todayHere}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            amountField.changeDate(e.target.value);
+          }}
         />
       </label>
 
       <Refusal
-        text={state.refusal && message(state.refusal, { currency, digits })}
+        text={refusalText === liveProblem ? undefined : refusalText}
         reload={state.refusal === "stale-version"}
       />
 

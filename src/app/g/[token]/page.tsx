@@ -144,6 +144,14 @@ async function Group({ token, shown }: { token: string; shown: number }) {
                 <span className="name">{nameOf.get(s.fromId)}</span> paid{" "}
                 <span className="name">{nameOf.get(s.toId)}</span>{" "}
                 <span className="amount">{money(s.amount)}</span>
+                {s.foreign && (
+                  <>
+                    {" "}
+                    <span className="muted">
+                      ({formatAmount(s.foreign.amount, s.foreign, locale)})
+                    </span>
+                  </>
+                )}
               </span>{" "}
               <span className="muted">{formatDate(s.date, locale)}</span>{" "}
               <Link
