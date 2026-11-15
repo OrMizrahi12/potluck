@@ -185,6 +185,24 @@ export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
   return group !== undefined;
 }
 
+/**
+ * The group currency of the group with this link, or undefined when no group
+ * has it: one indexed lookup, answered without the database for a link
+ * newLinkToken() couldn't have made.
+ */
+export async function readGroupCurrency(
+  db: Db,
+  linkToken: string
+): Promise<string | undefined> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return undefined;
+  const [group] = await db
+    .select({ currency: groups.currency })
+    .from(groups)
+    .where(eq(groups.linkToken, linkToken))
+    .limit(1);
+  return group?.currency;
+}
+
 /** Why an expense's description, amount, date, payer or participants can't be recorded. */
 export type ExpenseRefusal =
   | "description-missing"
@@ -1153,7 +1171,7 @@ function readAmount(
 }
 
 /** Whether text is a real calendar date written YYYY-MM-DD. */
-function isCalendarDate(text: string): boolean {
+export function isCalendarDate(text: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (!match) return false;
   const [year, month, day] = match.slice(1).map(Number);

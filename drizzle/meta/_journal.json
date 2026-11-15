@@ -36,6 +36,13 @@
       "when": 1794751475757,
       "tag": "0004_expense_foreign_amounts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794753796392,
+      "tag": "0005_rate_lookups",
+      "breakpoints": true
     }
   ]
 }

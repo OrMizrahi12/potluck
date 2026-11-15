@@ -110,6 +110,34 @@ export const expenses = pgTable(
   ]
 );
 
+// Exchange rates looked up from the rate source, so Potluck doesn't ask it
+// again for the same foreign currency, group currency and entry date. A
+// temporary failure is never kept.
+export const rateLookups = pgTable(
+  "rate_lookups",
+  {
+    foreignCurrency: text("foreign_currency").notNull(),
+    groupCurrency: text("group_currency").notNull(),
+    // The entry's date the lookup was for, not the rate's own.
+    date: date("date", { mode: "string" }).notNull(),
+    // "found" or "unavailable".
+    answer: text("answer").notNull(),
+    // Exact decimal as the source wrote it, never a float type.
+    rate: numeric("rate"),
+    // The date the rate was published for.
+    rateDate: date("rate_date", { mode: "string" }),
+    // Null keeps the answer for good: a rate found for a past date.
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.foreignCurrency, t.groupCurrency, t.date] }),
+    check(
+      "rate_lookups_answer_whole",
+      sql`(${t.answer} = 'found' AND ${t.rate} IS NOT NULL AND ${t.rate} > 0 AND ${t.rateDate} IS NOT NULL) OR (${t.answer} = 'unavailable' AND ${t.rate} IS NULL AND ${t.rateDate} IS NULL)`
+    ),
+  ]
+);
+
 export const expenseParticipants = pgTable(
   "expense_participants",
   {
