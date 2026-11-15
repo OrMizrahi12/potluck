@@ -167,9 +167,15 @@ export function ExpenseForm({
   const [state, formAction, pending] = useActionState(action, {});
   // Controlled, so a refused submission keeps what was typed.
   const [description, setDescription] = useState(initial?.description ?? "");
+  // A new expense's date defaults to today where the member is, which only
+  // the browser knows.
+  const [date, setDate] = useState(initial?.date);
+  const todayHere = useSyncExternalStore(noSubscription, today, () => "");
   const amountField = useAmountField({
+    token,
     currency,
     digits,
+    date: date ?? todayHere,
     initialAmount: initial?.amount,
     initialForeign: initial?.foreign,
   });
@@ -187,10 +193,6 @@ export function ExpenseForm({
           members.filter((m) => m.active).map((m) => m.id)
       )
   );
-  // A new expense's date defaults to today where the member is, which only
-  // the browser knows.
-  const [date, setDate] = useState(initial?.date);
-  const todayHere = useSyncExternalStore(noSubscription, today, () => "");
 
   function toggle(id: string, checked: boolean) {
     const next = new Set(participantIds);
@@ -256,7 +258,10 @@ export function ExpenseForm({
           type="date"
           required
           value={date ?? todayHere}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            amountField.changeDate(e.target.value);
+          }}
         />
       </label>
 

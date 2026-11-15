@@ -22,6 +22,22 @@ function form(page: Page) {
   return page.getByRole("form", { name: "Add an expense" });
 }
 
+/**
+ * Opens the exchange rate and bank amount fields, folded away while the
+ * fake rate source's answer is awaited or proposed, and clears the rate it
+ * proposed, so what the test types next is typed.
+ */
+async function typeAnotherRate(page: Page) {
+  await form(page)
+    .getByRole("button", {
+      name: /^(Type the rate instead|Use another rate or my bank's amount)$/,
+    })
+    .click();
+  await form(page)
+    .getByLabel(/^Exchange rate/)
+    .clear();
+}
+
 async function startExpense(page: Page, description: string) {
   await page.getByRole("link", { name: "Add an expense" }).click();
   await form(page).getByLabel("Description").fill(description);
@@ -47,6 +63,7 @@ test("record an expense in another currency at a typed rate", async ({
 
   await test.step("pick francs and type the rate", async () => {
     await form(page).getByLabel("Currency").selectOption("CHF");
+    await typeAnotherRate(page);
     await form(page).getByLabel("Amount (CHF)").fill("48");
     await form(page).getByLabel("Exchange rate (1 CHF = ? EUR)").fill("1.0463");
     // CHF 48.00 × 1.0463 = 50.2224 EUR, which is €50.22.
@@ -108,6 +125,7 @@ test("record an expense in another currency at the amount the bank charged", asy
   await test.step("pick dollars and type what the bank charged", async () => {
     await startExpense(page, "Museum");
     await form(page).getByLabel("Currency").selectOption("USD");
+    await typeAnotherRate(page);
     await form(page).getByLabel("Amount (USD)").fill("48.60");
     await form(page)
       .getByLabel("Or what your bank charged (EUR)")
@@ -168,6 +186,7 @@ test("the form names a converted figure it can't record before saving", async ({
   await test.step("too small to split", async () => {
     // ¥1 × 0.0062 = 0.0062 EUR, which rounds half up to €0.01.
     await form(page).getByLabel("Currency").selectOption("JPY");
+    await typeAnotherRate(page);
     await form(page).getByLabel("Amount (JPY)").fill("1");
     await form(page).getByLabel("Exchange rate (1 JPY = ? EUR)").fill("0.0062");
     await expect(form(page).getByRole("status")).toHaveText(
@@ -184,6 +203,7 @@ test("the form names a converted figure it can't record before saving", async ({
   await test.step("over the cap", async () => {
     // 300,000,000,000 VND × 0.0000345 = 10,350,000 EUR.
     await form(page).getByLabel("Currency").selectOption("VND");
+    await typeAnotherRate(page);
     await form(page).getByLabel("Amount (VND)").fill("300000000000");
     await form(page)
       .getByLabel("Exchange rate (1 VND = ? EUR)")

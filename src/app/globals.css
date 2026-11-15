@@ -314,3 +314,18 @@ a.button.secondary {
 .quiet-line {
   overflow-wrap: anywhere;
 }
+
+/* The rate lookup's buttons sit at the start of the line, not stretched. */
+.rate-button {
+  align-self: flex-start;
+}
+
+.lookup-note:empty {
+  display: none;
+}
+
+.lookup-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}

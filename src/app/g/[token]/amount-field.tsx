@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { CURRENCIES, findCurrency } from "@/currency/currencies";
 import { minorToDecimal, parseAmount } from "@/money/amount";
 import {
@@ -8,7 +8,8 @@ import {
   formatRate,
   rateFromBankAmount,
 } from "@/money/foreign-amount";
-import { formatAmount } from "@/money/format";
+import { formatAmount, formatDate } from "@/money/format";
+import type { RateAnswer } from "@/group/rate-lookup";
 
 /** An entry's foreign part as the edit page hands it over: typed text. */
 export type InitialForeignPart = {
@@ -17,6 +18,9 @@ export type InitialForeignPart = {
   rate: string;
 };
 
+/** Where the rate lookup for the picked currency and the entry's date stands. */
+type Lookup = { kind: "none" } | { kind: "looking-up" } | RateAnswer;
+
 /**
  * The amount field's state: the number typed, the currency picked beside it,
  * and, for a foreign amount, the two linked fields (exchange rate, bank
@@ -24,15 +28,25 @@ export type InitialForeignPart = {
  * from it; otherwise the rate stays fixed and the group-currency amount is
  * worked out. Everything is recalculated here in the browser, with the same
  * pure module the group service checks against.
+ *
+ * Picking a foreign currency, or changing the date through `changeDate`,
+ * looks up Frankfurter's rate through Potluck's server and proposes it.
+ * Typing a rate or bank amount wins over an answer that comes later. An
+ * entry's saved rate is never looked up again on a date change.
  */
 export function useAmountField({
+  token,
   currency,
   digits,
+  date,
   initialAmount = "",
   initialForeign,
 }: {
+  token: string;
   currency: string;
   digits: number;
+  /** The entry's date, YYYY-MM-DD, as the form shows it now. */
+  date: string;
   initialAmount?: string;
   initialForeign?: InitialForeignPart;
 }) {
@@ -41,10 +55,57 @@ export function useAmountField({
   const [rateText, setRateText] = useState(initialForeign?.rate ?? "");
   const [bankText, setBankText] = useState("");
   const [bankTyped, setBankTyped] = useState(false);
-  // Where the rate came from: the saved entry's, or typed on this page.
-  const [source, setSource] = useState<"saved" | "typed">(
+  // Where the rate came from: the saved entry's, Frankfurter's, or typed on
+  // this page.
+  const [source, setSource] = useState<"saved" | "typed" | "looked-up">(
     initialForeign ? "saved" : "typed"
   );
+  const [lookup, setLookup] = useState<Lookup>({ kind: "none" });
+  // The exchange rate and bank amount fields, folded away until asked for.
+  const [overriding, setOverriding] = useState(false);
+  const running = useRef<AbortController | null>(null);
+  // Whether a rate or bank amount was typed since the running lookup began.
+  const typedSinceAsking = useRef(false);
+
+  /** Asks Potluck's server for the rate of `code` on `onDate` and proposes it. */
+  function lookUp(code: string, onDate: string, typedAlready: boolean) {
+    running.current?.abort();
+    const controller = new AbortController();
+    running.current = controller;
+    typedSinceAsking.current = typedAlready;
+    setLookup({ kind: "looking-up" });
+    fetch(`/g/${token}/rate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ foreignCurrency: code, date: onDate }),
+      signal: controller.signal,
+    })
+      .then((response): Promise<RateAnswer> | RateAnswer =>
+        response.ok ? response.json() : { kind: "temporary-failure" }
+      )
+      .catch((): RateAnswer => ({ kind: "temporary-failure" }))
+      .then((answer) => {
+        // A later pick or date has asked again since.
+        if (controller.signal.aborted) return;
+        running.current = null;
+        setLookup(answer);
+        if (answer.kind !== "found") {
+          setOverriding(true);
+        } else if (!typedSinceAsking.current) {
+          setRateText(answer.rate);
+          setBankText("");
+          setBankTyped(false);
+          setSource("looked-up");
+        }
+      });
+  }
+
+  /** Stops a running lookup and forgets its answer: there's nothing to look up. */
+  function stopLooking() {
+    running.current?.abort();
+    running.current = null;
+    setLookup({ kind: "none" });
+  }
 
   const foreignCurrency =
     paidIn === currency ? undefined : findCurrency(paidIn);
@@ -79,6 +140,10 @@ export function useAmountField({
     /** The group-currency amount in minor units, once it can be worked out. */
     groupAmount,
     source,
+    date,
+    lookup,
+    /** Whether the exchange rate and bank amount fields are open. */
+    overriding,
     /** What the exchange rate field shows: a rate worked out from a bank amount is shown rounded. */
     rateField: bankTyped ? (rate ? formatRate(rate) : "") : rateText,
     /** What the bank amount field shows: worked out from the rate until one is typed. */
@@ -93,14 +158,41 @@ export function useAmountField({
       setBankText("");
       setBankTyped(false);
       setSource("typed");
+      setOverriding(false);
+      if (code === currency) stopLooking();
+      else lookUp(code, date, false);
+    },
+    /** The form calls this when the entry's date changes to `newDate`. */
+    changeDate(newDate: string) {
+      if (!foreignCurrency || source === "saved") return;
+      // A rate or bank amount typed before the change stays.
+      const typed = source === "typed" && (rateText !== "" || bankTyped);
+      lookUp(foreignCurrency.code, newDate, typed);
+    },
+    tryAgain() {
+      if (foreignCurrency) lookUp(foreignCurrency.code, date, false);
+    },
+    openOverride() {
+      setOverriding(true);
+    },
+    /** Goes back to the rate Frankfurter proposed. */
+    takeLookedUpRate() {
+      if (lookup.kind !== "found") return;
+      setRateText(lookup.rate);
+      setBankText("");
+      setBankTyped(false);
+      setSource("looked-up");
+      setOverriding(false);
     },
     type: setTyped,
     typeRate(text: string) {
+      typedSinceAsking.current = true;
       setRateText(text);
       setBankTyped(false);
       setSource("typed");
     },
     typeBank(text: string) {
+      typedSinceAsking.current = true;
       setBankText(text);
       setBankTyped(true);
       setSource("typed");
@@ -184,36 +276,124 @@ export function AmountField({
             <p className="muted quiet-line">
               = {formatAmount(groupAmount, { currency, digits }, locale)} · 1{" "}
               {foreignCurrency.code} = {formatRate(rate)} {currency} ·{" "}
-              {field.source === "saved" ? "saved rate" : "typed"}
+              {sourceNote(field, locale)}
             </p>
           )}
           <p role="status" className="error">
             {problem}
           </p>
-          <label className="field">
-            <span>
-              Exchange rate (1 {foreignCurrency.code} = ? {currency})
-            </span>
-            <input
-              inputMode="decimal"
-              autoComplete="off"
-              value={field.rateField}
-              onChange={(e) => field.typeRate(e.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Or what your bank charged ({currency})</span>
-            <input
-              inputMode={digits === 0 ? "numeric" : "decimal"}
-              placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
-              autoComplete="off"
-              value={field.bankField}
-              onChange={(e) => field.typeBank(e.target.value)}
-            />
-          </label>
+          <LookupNote field={field} code={foreignCurrency.code} />
+          {field.overriding ? (
+            <>
+              <label className="field">
+                <span>
+                  Exchange rate (1 {foreignCurrency.code} = ? {currency})
+                </span>
+                <input
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={field.rateField}
+                  onChange={(e) => field.typeRate(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Or what your bank charged ({currency})</span>
+                <input
+                  inputMode={digits === 0 ? "numeric" : "decimal"}
+                  placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
+                  autoComplete="off"
+                  value={field.bankField}
+                  onChange={(e) => field.typeBank(e.target.value)}
+                />
+              </label>
+              {field.lookup.kind === "found" &&
+                field.source !== "looked-up" && (
+                  <button
+                    type="button"
+                    className="secondary rate-button"
+                    onClick={field.takeLookedUpRate}
+                  >
+                    Use Frankfurter&apos;s rate
+                  </button>
+                )}
+            </>
+          ) : (
+            field.lookup.kind !== "looking-up" && (
+              <button
+                type="button"
+                className="secondary rate-button"
+                onClick={field.openOverride}
+              >
+                Use another rate or my bank&apos;s amount
+              </button>
+            )
+          )}
         </>
       )}
     </>
+  );
+}
+
+/** Where the quiet line says the rate came from. */
+function sourceNote(field: AmountFieldState, locale: string): string {
+  const { source, lookup, date } = field;
+  if (source === "saved") return "saved rate";
+  if (source === "typed" || lookup.kind !== "found") return "typed";
+  // A weekend, a holiday or a later date gets another day's rate: say which.
+  return lookup.date === date
+    ? "rate from Frankfurter"
+    : `rate from Frankfurter · rate of ${formatDate(lookup.date, locale)}`;
+}
+
+/** What the lookup is doing, when it's still running or couldn't propose a rate. */
+function LookupNote({
+  field,
+  code,
+}: {
+  field: AmountFieldState;
+  code: string;
+}) {
+  const { lookup, currency } = field;
+  return (
+    <div aria-live="polite" className="lookup-note">
+      {lookup.kind === "looking-up" && (
+        <>
+          <p className="muted">
+            Looking up the {code} rate… You can type it instead.
+          </p>
+          {!field.overriding && (
+            <button
+              type="button"
+              className="secondary rate-button"
+              onClick={field.openOverride}
+            >
+              Type the rate instead
+            </button>
+          )}
+        </>
+      )}
+      {lookup.kind === "temporary-failure" && (
+        <>
+          <p className="muted">Couldn&apos;t get a rate right now.</p>
+          <button
+            type="button"
+            className="secondary rate-button"
+            onClick={field.tryAgain}
+          >
+            Try again
+          </button>
+          <p className="muted">
+            Or type the rate, or what your bank charged in {currency}.
+          </p>
+        </>
+      )}
+      {lookup.kind === "unavailable" && (
+        <p className="muted">
+          No rate available for {code} on this date. Type the rate, or what your
+          bank charged in {currency}.
+        </p>
+      )}
+    </div>
   );
 }
 
