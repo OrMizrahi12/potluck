@@ -11,7 +11,7 @@ import { isCalendarDate, readGroupCurrency } from "./service";
 const STALE_AFTER_DAYS = 30;
 /** How long a lookup waits for the source before calling it a temporary failure. */
 const TIMEOUT_MS = 4000;
-/** How long an answer that may still change is kept: today's or a later date's rate, or unavailable. */
+/** How long an answer that may still change is kept: any but a rate published for the past date asked. */
 const KEEP_FOR_MS = 60 * 60 * 1000;
 
 /** Where rates come from: Frankfurter v2's base URL, and how to reach it. */
@@ -40,8 +40,8 @@ export type RateLookupRefusal =
  * The exchange rate for an entry of the group with `linkToken`, paid in
  * `foreignCurrency` on `date` (YYYY-MM-DD): the rate published that day, or
  * the latest before it, unavailable when that is more than 30 days earlier.
- * Answers are kept in `rate_lookups`: a rate for a past date for good,
- * anything else that isn't a temporary failure for an hour. `now` is the
+ * Answers are kept in `rate_lookups`: a rate published for the past date
+ * asked for good, anything else that isn't a temporary failure for an hour. `now` is the
  * clock; "today" is its UTC date.
  */
 export async function lookUpRate(
@@ -93,10 +93,11 @@ export async function lookUpRate(
   const answer = await askSource(source, foreignCurrency, groupCurrency, asked);
   if (answer.kind === "temporary-failure") return { ok: true, answer };
 
-  // A past date's rate is final; today's and later ones move, and the source
-  // may add a pair it doesn't cover yet.
+  // A rate published for the past date asked is final. Anything else may
+  // move: today's and later rates, an earlier day's rate standing in for a
+  // past date whose own isn't published yet, and a pair the source may add.
   const expiresAt =
-    answer.kind === "found" && date < today
+    answer.kind === "found" && answer.date === date && date < today
       ? null
       : new Date(at.getTime() + KEEP_FOR_MS);
   const row = {

@@ -366,6 +366,45 @@ describe("rate lookup", () => {
     });
   });
 
+  it("keeps an earlier day's rate found for a past date for one hour", async () => {
+    const db = await createTestDb();
+    const linkToken = await groupIn(db, "EUR");
+    const entry = { linkToken, foreignCurrency: "CHF", date: "2026-11-13" };
+    // Just after midnight, Friday 13 Nov's rate isn't published yet.
+    await lookUpRate(
+      db,
+      {
+        source: frankfurter([{ date: "2026-11-12", rate: "1.0455" }]),
+        now: at("2026-11-14T00:30:00Z"),
+      },
+      entry
+    );
+    const later = frankfurter([
+      { date: "2026-11-12", rate: "1.0455" },
+      { date: "2026-11-13", rate: "1.0463" },
+    ]);
+
+    const within = await lookUpRate(
+      db,
+      { source: later, now: at("2026-11-14T01:29:00Z") },
+      entry
+    );
+    const after = await lookUpRate(
+      db,
+      { source: later, now: at("2026-11-14T01:31:00Z") },
+      entry
+    );
+
+    expect(within).toEqual({
+      ok: true,
+      answer: { kind: "found", rate: "1.0455", date: "2026-11-12" },
+    });
+    expect(after).toEqual({
+      ok: true,
+      answer: { kind: "found", rate: "1.0463", date: "2026-11-13" },
+    });
+  });
+
   it("keeps a rate found for today for one hour", async () => {
     const db = await createTestDb();
     const linkToken = await groupIn(db, "EUR");
