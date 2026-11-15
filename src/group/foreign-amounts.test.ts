@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
-import {
-  addExpense,
-  createGroup,
-  readGroupView,
-  type AddExpenseInput,
-} from "./service";
+import { fnv1a32 } from "../test/fnv1a32";
+import { addExpense, createGroup, readGroupView } from "./service";
 
 /** A fresh group in `currency` with the named members. */
 async function group(db: Db, currency: string, memberNames: string[]) {
@@ -20,16 +16,6 @@ async function group(db: Db, currency: string, memberNames: string[]) {
     linkToken: created.view.linkToken,
     ids: created.view.members.map((m) => m.id),
   };
-}
-
-// 32-bit FNV-1a, written out independently of the engine so the odd-cent
-// rule can be checked against the random ids the service assigns.
-function fnv1a32(text: string): number {
-  let hash = 0x811c9dc5;
-  for (const byte of Buffer.from(text, "ascii")) {
-    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-  }
-  return hash;
 }
 
 describe("an expense with a foreign amount", () => {
@@ -159,60 +145,66 @@ describe("an expense with a foreign amount", () => {
   });
 });
 
-describe("refusing an expense's foreign part", () => {
-  /** Adds Ana's CHF 48.00 fondue at 1.0463 (€50.22) with `change` applied. */
-  async function addWith(
-    change: (input: AddExpenseInput) => AddExpenseInput,
-    { currency = "EUR", names = ["Ana", "Ben"] } = {}
-  ) {
-    const db = await createTestDb();
-    const { linkToken, ids } = await group(db, currency, names);
-    const result = await addExpense(
-      db,
-      linkToken,
-      change({
+describe("an expense's foreign part", () => {
+  it("is refused when its currency is outside the picker, and nothing is recorded", async () => {
+    for (const currency of ["XYZ", "XAU", "chf", ""]) {
+      const db = await createTestDb();
+      const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+      const [ana, ben] = ids;
+
+      const result = await addExpense(db, linkToken, {
         description: "Fondue",
         amount: "50.22",
         date: "2026-11-14",
-        payerId: ids[0],
-        participantIds: ids,
-        foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
-      })
-    );
-    const view = await readGroupView(db, linkToken);
-    return { result, view };
-  }
+        payerId: ana,
+        participantIds: [ana, ben],
+        foreign: { amount: "48.00", currency, rate: "1.0463" },
+      });
 
-  const withForeign =
-    (foreign: Partial<NonNullable<AddExpenseInput["foreign"]>>) =>
-    (input: AddExpenseInput) => ({
-      ...input,
-      foreign: { ...input.foreign!, ...foreign },
-    });
-
-  it("refuses a currency outside the picker, and records nothing", async () => {
-    for (const currency of ["XYZ", "XAU", "chf", ""]) {
-      const { result, view } = await addWith(withForeign({ currency }));
       expect(result, currency).toEqual({
         ok: false,
         reason: "foreign-currency-unknown",
       });
-      expect(view?.expenses).toEqual([]);
+      expect((await readGroupView(db, linkToken))?.expenses).toEqual([]);
     }
   });
 
-  it("refuses the group currency as a foreign currency", async () => {
-    const { result } = await addWith(withForeign({ currency: "EUR" }));
+  it("is refused when its currency is the group currency", async () => {
+    const db = await createTestDb();
+    const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+    const [ana, ben] = ids;
+
+    const result = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "EUR", rate: "1.0463" },
+    });
+
     expect(result).toEqual({
       ok: false,
       reason: "foreign-currency-is-group-currency",
     });
   });
 
-  it("refuses a foreign amount that isn't a number in its currency's digits", async () => {
+  it("is refused when its amount isn't a number in its currency's digits", async () => {
     // CHF has 2 digits, so 3 decimals are unreadable.
     for (const amount of ["", "abc", "48.001", "1,000"]) {
-      const { result } = await addWith(withForeign({ amount }));
+      const db = await createTestDb();
+      const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+      const [ana, ben] = ids;
+
+      const result = await addExpense(db, linkToken, {
+        description: "Fondue",
+        amount: "50.22",
+        date: "2026-11-14",
+        payerId: ana,
+        participantIds: [ana, ben],
+        foreign: { amount, currency: "CHF", rate: "1.0463" },
+      });
+
       expect(result, amount).toEqual({
         ok: false,
         reason: "foreign-amount-unreadable",
@@ -220,9 +212,21 @@ describe("refusing an expense's foreign part", () => {
     }
   });
 
-  it("refuses a foreign amount that isn't more than zero", async () => {
+  it("is refused when its amount isn't more than zero", async () => {
     for (const amount of ["0", "0.00", "-48.00"]) {
-      const { result } = await addWith(withForeign({ amount }));
+      const db = await createTestDb();
+      const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+      const [ana, ben] = ids;
+
+      const result = await addExpense(db, linkToken, {
+        description: "Fondue",
+        amount: "50.22",
+        date: "2026-11-14",
+        payerId: ana,
+        participantIds: [ana, ben],
+        foreign: { amount, currency: "CHF", rate: "1.0463" },
+      });
+
       expect(result, amount).toEqual({
         ok: false,
         reason: "foreign-amount-not-positive",
@@ -230,14 +234,38 @@ describe("refusing an expense's foreign part", () => {
     }
   });
 
-  it("refuses a foreign amount of more than 12 whole digits", async () => {
-    const { result } = await addWith(withForeign({ amount: "1234567890123" }));
+  it("is refused when its amount has more than 12 whole digits", async () => {
+    const db = await createTestDb();
+    const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+    const [ana, ben] = ids;
+
+    const result = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "1234567890123", currency: "CHF", rate: "1.0463" },
+    });
+
     expect(result).toEqual({ ok: false, reason: "foreign-amount-too-large" });
   });
 
-  it("refuses an exchange rate that isn't a number", async () => {
+  it("is refused when its exchange rate isn't a number", async () => {
     for (const rate of ["", "abc", "1.2.3", "1e3", ".", "1,0463"]) {
-      const { result } = await addWith(withForeign({ rate }));
+      const db = await createTestDb();
+      const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+      const [ana, ben] = ids;
+
+      const result = await addExpense(db, linkToken, {
+        description: "Fondue",
+        amount: "50.22",
+        date: "2026-11-14",
+        payerId: ana,
+        participantIds: [ana, ben],
+        foreign: { amount: "48.00", currency: "CHF", rate },
+      });
+
       expect(result, rate).toEqual({
         ok: false,
         reason: "exchange-rate-unreadable",
@@ -245,9 +273,21 @@ describe("refusing an expense's foreign part", () => {
     }
   });
 
-  it("refuses an exchange rate that isn't more than zero", async () => {
+  it("is refused when its exchange rate isn't more than zero", async () => {
     for (const rate of ["0", "0.000", "-1.0463"]) {
-      const { result } = await addWith(withForeign({ rate }));
+      const db = await createTestDb();
+      const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+      const [ana, ben] = ids;
+
+      const result = await addExpense(db, linkToken, {
+        description: "Fondue",
+        amount: "50.22",
+        date: "2026-11-14",
+        payerId: ana,
+        participantIds: [ana, ben],
+        foreign: { amount: "48.00", currency: "CHF", rate },
+      });
+
       expect(result, rate).toEqual({
         ok: false,
         reason: "exchange-rate-not-positive",
@@ -256,13 +296,21 @@ describe("refusing an expense's foreign part", () => {
   });
 
   // Any rate more than zero is a real rate, however extreme.
-  it("accepts an extreme exchange rate", async () => {
+  it("is accepted at an extreme exchange rate", async () => {
+    const db = await createTestDb();
+    const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
+    const [ana, ben] = ids;
+
     // ¥100 × 25000 = €2,500,000.00.
-    const { result } = await addWith((input) => ({
-      ...input,
+    const result = await addExpense(db, linkToken, {
+      description: "Fondue",
       amount: "2500000.00",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
       foreign: { amount: "100", currency: "JPY", rate: "25000" },
-    }));
+    });
+
     expect(result.ok).toBe(true);
   });
 });

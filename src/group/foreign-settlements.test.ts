@@ -6,7 +6,6 @@ import {
   addSettlement,
   createGroup,
   readGroupView,
-  type AddSettlementInput,
 } from "./service";
 
 /** A fresh group in `currency` with members Ana, Ben and Cai. */
@@ -135,95 +134,97 @@ describe("a settlement with a foreign amount", () => {
   });
 });
 
-describe("refusing a settlement's foreign part", () => {
-  /** Records Cai's $689.09 to Ana at 0.925926 (€638.05) with `change` applied. */
-  async function addWith(
-    change: (input: AddSettlementInput) => AddSettlementInput
-  ) {
-    const db = await createTestDb();
-    const { linkToken, ana, cai } = await zermattGroup(db);
-    const result = await addSettlement(
-      db,
-      linkToken,
-      change({
-        fromId: cai,
-        toId: ana,
-        amount: "638.05",
-        date: "2026-11-14",
-        foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
-      })
-    );
-    const view = await readGroupView(db, linkToken);
-    return { result, view };
-  }
-
-  const withForeign =
-    (foreign: Partial<NonNullable<AddSettlementInput["foreign"]>>) =>
-    (input: AddSettlementInput) => ({
-      ...input,
-      foreign: { ...input.foreign!, ...foreign },
-    });
-
+describe("a settlement's foreign part", () => {
   it.each([
     [
-      "a currency outside the picker",
-      { currency: "XYZ" },
+      "its currency is outside the picker",
+      { amount: "689.09", currency: "XYZ", rate: "0.925926" },
       "foreign-currency-unknown",
     ],
     [
-      "the group currency",
-      { currency: "EUR" },
+      "its currency is the group currency",
+      { amount: "689.09", currency: "EUR", rate: "0.925926" },
       "foreign-currency-is-group-currency",
     ],
     // USD has 2 digits, so 3 decimals are unreadable.
     [
-      "an unreadable foreign amount",
-      { amount: "689.091" },
+      "its amount is unreadable",
+      { amount: "689.091", currency: "USD", rate: "0.925926" },
       "foreign-amount-unreadable",
     ],
     [
-      "a foreign amount of zero",
-      { amount: "0.00" },
+      "its amount is zero",
+      { amount: "0.00", currency: "USD", rate: "0.925926" },
       "foreign-amount-not-positive",
     ],
     [
-      "a negative foreign amount",
-      { amount: "-689.09" },
+      "its amount is negative",
+      { amount: "-689.09", currency: "USD", rate: "0.925926" },
       "foreign-amount-not-positive",
     ],
     [
-      "a foreign amount of 13 whole digits",
-      { amount: "1234567890123" },
+      "its amount has 13 whole digits",
+      { amount: "1234567890123", currency: "USD", rate: "0.925926" },
       "foreign-amount-too-large",
     ],
     [
-      "an unreadable exchange rate",
-      { rate: "1e3" },
+      "its exchange rate is unreadable",
+      { amount: "689.09", currency: "USD", rate: "1e3" },
       "exchange-rate-unreadable",
     ],
-    ["an exchange rate of zero", { rate: "0" }, "exchange-rate-not-positive"],
-  ] as const)("refuses %s, and records nothing", async (_, foreign, reason) => {
-    const { result, view } = await addWith(withForeign(foreign));
-    expect(result).toEqual({ ok: false, reason });
-    expect(view?.settlements).toEqual([]);
-  });
+    [
+      "its exchange rate is zero",
+      { amount: "689.09", currency: "USD", rate: "0" },
+      "exchange-rate-not-positive",
+    ],
+  ] as const)(
+    "is refused when %s, and nothing is recorded",
+    async (_, foreign, reason) => {
+      const db = await createTestDb();
+      const { linkToken, ana, cai } = await zermattGroup(db);
 
-  it("refuses a group-currency amount that disagrees with the foreign amount and rate", async () => {
-    const { result } = await addWith((input) => ({
-      ...input,
+      const result = await addSettlement(db, linkToken, {
+        fromId: cai,
+        toId: ana,
+        amount: "638.05",
+        date: "2026-11-14",
+        foreign,
+      });
+
+      expect(result).toEqual({ ok: false, reason });
+      expect((await readGroupView(db, linkToken))?.settlements).toEqual([]);
+    }
+  );
+
+  it("is refused when the group-currency amount disagrees with it", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, cai } = await zermattGroup(db);
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
       amount: "700.00",
-    }));
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+
     expect(result).toEqual({ ok: false, reason: "amount-disagrees-with-rate" });
   });
 
   // The cash was $689.09 and the bank charged €640.00: the rate worked out
   // from it is 640 ÷ 689.09 = 0.9287611197 (10 significant digits).
-  it("accepts a rate worked out from a bank amount", async () => {
-    const { result } = await addWith((input) => ({
-      ...input,
+  it("is accepted at a rate worked out from a bank amount", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, cai } = await zermattGroup(db);
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
       amount: "640.00",
+      date: "2026-11-14",
       foreign: { amount: "689.09", currency: "USD", rate: "0.9287611197" },
-    }));
+    });
+
     if (!result.ok) throw new Error(`refused: ${result.reason}`);
     expect(result.view.settlements[0]).toMatchObject({
       amount: 64000,
@@ -232,27 +233,39 @@ describe("refusing a settlement's foreign part", () => {
   });
 
   // ¥1 × 0.0042 = 0.0042 EUR, which rounds half up to €0.00.
-  it("refuses a foreign amount that converts to zero", async () => {
-    const { result, view } = await addWith((input) => ({
-      ...input,
+  it("is refused when it converts to zero, and nothing is recorded", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, cai } = await zermattGroup(db);
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
       amount: "0.00",
+      date: "2026-11-14",
       foreign: { amount: "1", currency: "JPY", rate: "0.0042" },
-    }));
+    });
+
     expect(result).toEqual({
       ok: false,
       reason: "foreign-amount-converts-to-zero",
     });
-    expect(view?.settlements).toEqual([]);
+    expect((await readGroupView(db, linkToken))?.settlements).toEqual([]);
   });
 
   // 300,000,000,000 VND × 0.0000345 = 10,350,000 EUR: over the cap of
   // 10,000,000 EUR, though the foreign amount itself has no cap.
-  it("refuses a foreign amount that converts to more than the cap", async () => {
-    const { result } = await addWith((input) => ({
-      ...input,
+  it("is refused when it converts to more than the cap", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, cai } = await zermattGroup(db);
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
       amount: "10350000.00",
+      date: "2026-11-14",
       foreign: { amount: "300000000000", currency: "VND", rate: "0.0000345" },
-    }));
+    });
+
     expect(result).toEqual({ ok: false, reason: "amount-too-large" });
   });
 });

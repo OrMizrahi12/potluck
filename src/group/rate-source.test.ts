@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createTestDb } from "../test/db";
 import { answerAsFakeFrankfurter } from "./fake-frankfurter";
-import { lookUpRate, type RateSource } from "./rate-lookup";
+import { lookUpRate } from "./rate-lookup";
 import { rateSourceUrl } from "./rate-source";
 import { createGroup } from "./service";
 
@@ -66,63 +66,164 @@ describe("the fake rate source", () => {
     expect(production.status).toBe(404);
   });
 
-  describe("answers a lookup by the foreign currency's code", () => {
+  it("answers a lookup for CHF with a rate on the asked date", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Zermatt trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+
     // The lookup asks the fake as it would ask Frankfurter.
-    const fake: RateSource = {
-      url: "http://localhost:3000/api/fake-frankfurter/v2",
-      fetch: (url, { signal }) =>
-        answerAsFakeFrankfurter(new URL(url), {}, signal),
-    };
-    const now = () => new Date("2026-11-15T12:00:00Z");
+    const result = await lookUpRate(
+      db,
+      {
+        source: {
+          url: "http://localhost:3000/api/fake-frankfurter/v2",
+          fetch: (url, { signal }) =>
+            answerAsFakeFrankfurter(new URL(url), {}, signal),
+        },
+        now: () => new Date("2026-11-15T12:00:00Z"),
+      },
+      {
+        linkToken: created.view.linkToken,
+        foreignCurrency: "CHF",
+        date: "2026-11-10",
+      }
+    );
 
-    async function lookUp(foreignCurrency: string, date: string) {
-      const db = await createTestDb();
-      const created = await createGroup(db, {
-        name: "Zermatt trip",
-        currency: "EUR",
-        memberNames: ["Ana", "Ben"],
-      });
-      if (!created.ok) throw new Error(created.reason);
-      return lookUpRate(
-        db,
-        { source: fake, now },
-        { linkToken: created.view.linkToken, foreignCurrency, date }
-      );
-    }
-
-    it("CHF: a rate on the asked date", async () => {
-      expect(await lookUp("CHF", "2026-11-10")).toEqual({
-        ok: true,
-        answer: { kind: "found", rate: "1.0463", date: "2026-11-10" },
-      });
+    expect(result).toEqual({
+      ok: true,
+      answer: { kind: "found", rate: "1.0463", date: "2026-11-10" },
     });
-
-    it("SEK: a rate from two days earlier", async () => {
-      expect(await lookUp("SEK", "2026-11-08")).toEqual({
-        ok: true,
-        answer: { kind: "found", rate: "0.0874", date: "2026-11-06" },
-      });
+  });
+  it("answers a lookup for SEK with a rate from two days earlier", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Zermatt trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
     });
+    if (!created.ok) throw new Error(created.reason);
 
-    it("HUF: down", async () => {
-      expect(await lookUp("HUF", "2026-11-10")).toEqual({
-        ok: true,
-        answer: { kind: "temporary-failure" },
-      });
+    // The lookup asks the fake as it would ask Frankfurter.
+    const result = await lookUpRate(
+      db,
+      {
+        source: {
+          url: "http://localhost:3000/api/fake-frankfurter/v2",
+          fetch: (url, { signal }) =>
+            answerAsFakeFrankfurter(new URL(url), {}, signal),
+        },
+        now: () => new Date("2026-11-15T12:00:00Z"),
+      },
+      {
+        linkToken: created.view.linkToken,
+        foreignCurrency: "SEK",
+        date: "2026-11-08",
+      }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      answer: { kind: "found", rate: "0.0874", date: "2026-11-06" },
     });
-
-    it("BOV: not covered", async () => {
-      expect(await lookUp("BOV", "2026-11-10")).toEqual({
-        ok: true,
-        answer: { kind: "unavailable" },
-      });
+  });
+  it("answers a lookup for HUF as down", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Zermatt trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
     });
+    if (!created.ok) throw new Error(created.reason);
 
-    it("THB: slower than the lookup waits", async () => {
-      expect(await lookUp("THB", "2026-11-10")).toEqual({
-        ok: true,
-        answer: { kind: "temporary-failure" },
-      });
+    // The lookup asks the fake as it would ask Frankfurter.
+    const result = await lookUpRate(
+      db,
+      {
+        source: {
+          url: "http://localhost:3000/api/fake-frankfurter/v2",
+          fetch: (url, { signal }) =>
+            answerAsFakeFrankfurter(new URL(url), {}, signal),
+        },
+        now: () => new Date("2026-11-15T12:00:00Z"),
+      },
+      {
+        linkToken: created.view.linkToken,
+        foreignCurrency: "HUF",
+        date: "2026-11-10",
+      }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      answer: { kind: "temporary-failure" },
+    });
+  });
+  it("answers a lookup for BOV as not covered", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Zermatt trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+
+    // The lookup asks the fake as it would ask Frankfurter.
+    const result = await lookUpRate(
+      db,
+      {
+        source: {
+          url: "http://localhost:3000/api/fake-frankfurter/v2",
+          fetch: (url, { signal }) =>
+            answerAsFakeFrankfurter(new URL(url), {}, signal),
+        },
+        now: () => new Date("2026-11-15T12:00:00Z"),
+      },
+      {
+        linkToken: created.view.linkToken,
+        foreignCurrency: "BOV",
+        date: "2026-11-10",
+      }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      answer: { kind: "unavailable" },
+    });
+  });
+  it("answers a lookup for THB slower than the lookup waits", async () => {
+    const db = await createTestDb();
+    const created = await createGroup(db, {
+      name: "Zermatt trip",
+      currency: "EUR",
+      memberNames: ["Ana", "Ben"],
+    });
+    if (!created.ok) throw new Error(created.reason);
+
+    // The lookup asks the fake as it would ask Frankfurter.
+    const result = await lookUpRate(
+      db,
+      {
+        source: {
+          url: "http://localhost:3000/api/fake-frankfurter/v2",
+          fetch: (url, { signal }) =>
+            answerAsFakeFrankfurter(new URL(url), {}, signal),
+        },
+        now: () => new Date("2026-11-15T12:00:00Z"),
+      },
+      {
+        linkToken: created.view.linkToken,
+        foreignCurrency: "THB",
+        date: "2026-11-10",
+      }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      answer: { kind: "temporary-failure" },
     });
   });
 });

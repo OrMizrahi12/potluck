@@ -23,39 +23,21 @@ async function zermattGroup(db: Db) {
   return { linkToken: created.view.linkToken, ana, ben, cai, dee };
 }
 
-/** Ana's CHF 48.00 fondue for Ana and Ben at 1.0463: 50.2224 EUR, sent as €50.22. */
-async function fondue(db: Db) {
-  const g = await zermattGroup(db);
-  const added = await addExpense(db, g.linkToken, {
-    description: "Fondue",
-    amount: "50.22",
-    date: "2026-11-14",
-    payerId: g.ana,
-    participantIds: [g.ana, g.ben],
-    foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
-  });
-  if (!added.ok) throw new Error(`refused: ${added.reason}`);
-  return { ...g, expenseId: added.view.expenses[0].id };
-}
-
-/** Cai hands Ana $689.09 at 0.925926: 638.04664... EUR, sent as €638.05. */
-async function cashToAna(db: Db) {
-  const g = await zermattGroup(db);
-  const added = await addSettlement(db, g.linkToken, {
-    fromId: g.cai,
-    toId: g.ana,
-    amount: "638.05",
-    date: "2026-11-14",
-    foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
-  });
-  if (!added.ok) throw new Error(`refused: ${added.reason}`);
-  return { ...g, settlementId: added.view.settlements[0].id };
-}
-
 describe("editing an expense with a foreign amount", () => {
   it("keeps the foreign part when an edit sends it again", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, cai, expenseId } = await fondue(db);
+    const { linkToken, ana, ben, cai } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const expenseId = added.view.expenses[0].id;
 
     const result = await editExpense(db, linkToken, {
       expenseId,
@@ -81,7 +63,18 @@ describe("editing an expense with a foreign amount", () => {
   // CHF 52.00 × 1.0470 = 54.444 EUR, sent as €54.44.
   it("replaces the foreign part with the one an edit sends", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, expenseId } = await fondue(db);
+    const { linkToken, ana, ben } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const expenseId = added.view.expenses[0].id;
 
     const result = await editExpense(db, linkToken, {
       expenseId,
@@ -111,7 +104,18 @@ describe("editing an expense with a foreign amount", () => {
 
   it("clears the foreign part when an edit sends none, leaving a plain amount", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, expenseId } = await fondue(db);
+    const { linkToken, ana, ben } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const expenseId = added.view.expenses[0].id;
 
     const result = await editExpense(db, linkToken, {
       expenseId,
@@ -194,7 +198,18 @@ describe("editing an expense with a foreign amount", () => {
   // CHF 9,600,000.00 × 1.0463 = 10,044,480 EUR: over the cap of 10,000,000.
   it("refuses a converted figure over the cap on an edit that keeps the frozen rate", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, expenseId } = await fondue(db);
+    const { linkToken, ana, ben } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const expenseId = added.view.expenses[0].id;
 
     const result = await editExpense(db, linkToken, {
       expenseId,
@@ -212,7 +227,18 @@ describe("editing an expense with a foreign amount", () => {
 
   it("refuses an edit made from a version someone else has since changed, and keeps the foreign part", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, expenseId } = await fondue(db);
+    const { linkToken, ana, ben } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const expenseId = added.view.expenses[0].id;
     const edit = {
       expenseId,
       version: 1,
@@ -245,7 +271,17 @@ describe("editing an expense with a foreign amount", () => {
 
   it("leaves the group currency locked", async () => {
     const db = await createTestDb();
-    const { linkToken } = await fondue(db);
+    const { linkToken, ana, ben } = await zermattGroup(db);
+    // CHF 48.00 × 1.0463 = 50.2224 EUR, sent as €50.22.
+    const added = await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "50.22",
+      date: "2026-11-14",
+      payerId: ana,
+      participantIds: [ana, ben],
+      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
 
     expect(
       await changeCurrency(db, linkToken, { version: 1, currency: "CHF" })
@@ -256,7 +292,17 @@ describe("editing an expense with a foreign amount", () => {
 describe("editing a settlement with a foreign amount", () => {
   it("keeps the foreign part when an edit sends it again", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, settlementId } = await cashToAna(db);
+    const { linkToken, ana, ben, cai } = await zermattGroup(db);
+    // $689.09 × 0.925926 = 638.04664… EUR, sent as €638.05.
+    const added = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
+      amount: "638.05",
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const settlementId = added.view.settlements[0].id;
 
     const result = await editSettlement(db, linkToken, {
       settlementId,
@@ -280,7 +326,17 @@ describe("editing a settlement with a foreign amount", () => {
   // $689.09 × 0.93 = 640.8537 EUR, sent as €640.85.
   it("replaces the foreign part with the one an edit sends", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, cai, settlementId } = await cashToAna(db);
+    const { linkToken, ana, cai } = await zermattGroup(db);
+    // $689.09 × 0.925926 = 638.04664… EUR, sent as €638.05.
+    const added = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
+      amount: "638.05",
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const settlementId = added.view.settlements[0].id;
 
     const result = await editSettlement(db, linkToken, {
       settlementId,
@@ -302,7 +358,17 @@ describe("editing a settlement with a foreign amount", () => {
 
   it("clears the foreign part when an edit sends none, leaving a plain amount", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, cai, settlementId } = await cashToAna(db);
+    const { linkToken, ana, cai } = await zermattGroup(db);
+    // $689.09 × 0.925926 = 638.04664… EUR, sent as €638.05.
+    const added = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
+      amount: "638.05",
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const settlementId = added.view.settlements[0].id;
 
     const result = await editSettlement(db, linkToken, {
       settlementId,
@@ -381,7 +447,17 @@ describe("editing a settlement with a foreign amount", () => {
 
   it("refuses an edit made from a version someone else has since changed, and keeps the foreign part", async () => {
     const db = await createTestDb();
-    const { linkToken, ana, ben, cai, settlementId } = await cashToAna(db);
+    const { linkToken, ana, ben, cai } = await zermattGroup(db);
+    // $689.09 × 0.925926 = 638.04664… EUR, sent as €638.05.
+    const added = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
+      amount: "638.05",
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
+    const settlementId = added.view.settlements[0].id;
     const first = await editSettlement(db, linkToken, {
       settlementId,
       version: 1,
@@ -413,7 +489,16 @@ describe("editing a settlement with a foreign amount", () => {
 
   it("leaves the group currency locked", async () => {
     const db = await createTestDb();
-    const { linkToken } = await cashToAna(db);
+    const { linkToken, ana, cai } = await zermattGroup(db);
+    // $689.09 × 0.925926 = 638.04664… EUR, sent as €638.05.
+    const added = await addSettlement(db, linkToken, {
+      fromId: cai,
+      toId: ana,
+      amount: "638.05",
+      date: "2026-11-14",
+      foreign: { amount: "689.09", currency: "USD", rate: "0.925926" },
+    });
+    if (!added.ok) throw new Error(`refused: ${added.reason}`);
 
     expect(
       await changeCurrency(db, linkToken, { version: 1, currency: "USD" })
