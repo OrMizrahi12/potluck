@@ -6,6 +6,7 @@ import {
   date,
   index,
   integer,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -74,6 +75,13 @@ export const expenses = pgTable(
     // Minor units. 10,000,000 major units in a 4-digit currency needs more
     // than 32 bits, and stays well inside a double's exact integers.
     amount: bigint("amount", { mode: "number" }).notNull(),
+    // The foreign amount, when the expense was paid in another currency: in
+    // minor units of `foreignCurrency`. `amount` stays the group-currency
+    // figure it converted to at `exchangeRate`, frozen when recorded.
+    foreignAmount: bigint("foreign_amount", { mode: "number" }),
+    foreignCurrency: text("foreign_currency"),
+    // Exact decimal, never a float type: as typed, or worked out from a bank amount.
+    exchangeRate: numeric("exchange_rate"),
     date: date("date", { mode: "string" }).notNull(),
     // No cascade: a member an expense references can't be deleted.
     payerId: uuid("payer_id")
@@ -86,6 +94,12 @@ export const expenses = pgTable(
   },
   (t) => [
     check("expenses_amount_positive", sql`${t.amount} > 0`),
+    // A foreign part is whole or absent. Spelled out with IS NOT NULL: a
+    // check whose test is NULL passes.
+    check(
+      "expenses_foreign_part_whole",
+      sql`(${t.foreignAmount} IS NULL AND ${t.foreignCurrency} IS NULL AND ${t.exchangeRate} IS NULL) OR (${t.foreignAmount} IS NOT NULL AND ${t.foreignCurrency} IS NOT NULL AND ${t.exchangeRate} IS NOT NULL AND ${t.foreignAmount} > 0 AND ${t.exchangeRate} > 0)`
+    ),
     // The group page lists expenses newest first.
     index("expenses_group_newest_first").on(
       t.groupId,

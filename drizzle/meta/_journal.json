@@ -29,6 +29,13 @@
       "when": 1794677145489,
       "tag": "0003_settlements",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794751475757,
+      "tag": "0004_expense_foreign_amounts",
+      "breakpoints": true
     }
   ]
 }

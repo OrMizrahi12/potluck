@@ -29,6 +29,27 @@ export function convertForward(
 }
 
 /**
+ * Whether `amount` (minor units of the group currency) agrees with the foreign
+ * amount at `rate`: within 1 minor unit of the half-up conversion, or within
+ * 0.5% of the foreign amount × the rate. A rate worked out from a bank amount
+ * agrees with that bank amount; a garbled figure doesn't.
+ *
+ * Preconditions: as convertForward's, and `amount` is a positive integer.
+ */
+export function agreesWithRate(
+  amount: number,
+  groupDigits: number,
+  foreign: MinorAmount,
+  rate: string
+): boolean {
+  const { num, den } = product(foreign, rate, groupDigits);
+  if (Math.abs(amount - Number(roundHalfUp(num, den))) <= 1) return true;
+  // |amount − num/den| ≤ 0.005 × num/den, in integers.
+  const gap = BigInt(amount) * den - num;
+  return (gap < 0n ? -gap : gap) * 1000n <= num * 5n;
+}
+
+/**
  * The exchange rate that turns `foreign` into exactly `bank`, the amount a
  * bank charged in the group currency, to 10 significant digits, rounded half
  * up and with no trailing zeros.
