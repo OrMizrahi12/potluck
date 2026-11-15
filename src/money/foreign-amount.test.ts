@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  convertBackward,
   convertForward,
   formatRate,
   rateFromBankAmount,
@@ -53,6 +54,60 @@ describe("converting a foreign amount forward", () => {
   // ¥1 × 0.0049 = 0.0049 EUR: under half a cent, so it converts to nothing.
   it("can convert to less than one minor unit", () => {
     expect(convertForward({ amount: 1, digits: 0 }, "0.0049", 2)).toBe(0);
+  });
+});
+
+describe("working a foreign amount backwards", () => {
+  // €30.00 ÷ 1.0463 = 28.672465… CHF, which is CHF 28.67 to the centime.
+  // Forward again: 28.67 × 1.0463 = 29.997421 EUR, which is €30.00.
+  it("gives the foreign amount that converts forward to the group-currency amount", () => {
+    expect(convertBackward({ amount: 3000, digits: 2 }, "1.0463", 2)).toBe(
+      2867
+    );
+    expect(convertForward({ amount: 2867, digits: 2 }, "1.0463", 2)).toBe(3000);
+  });
+
+  // €0.01 ÷ 0.4 = 0.025 CHF: exactly half a centime, so it rounds up to
+  // CHF 0.03. Forward again: 0.03 × 0.4 = 0.012 EUR, which is €0.01.
+  it("rounds half a minor unit of the foreign currency up", () => {
+    expect(convertBackward({ amount: 1, digits: 2 }, "0.4", 2)).toBe(3);
+    expect(convertForward({ amount: 3, digits: 2 }, "0.4", 2)).toBe(1);
+  });
+
+  // €30.00 ÷ 0.0062 = 4838.709… JPY, which is ¥4839.
+  // Forward again: 4839 × 0.0062 = 30.0018 EUR, which is €30.00.
+  it("works back into a currency without minor units", () => {
+    expect(convertBackward({ amount: 3000, digits: 2 }, "0.0062", 0)).toBe(
+      4839
+    );
+    expect(convertForward({ amount: 4839, digits: 0 }, "0.0062", 2)).toBe(3000);
+  });
+
+  // ¥7350 ÷ 151.235 = 48.59986… USD, since 48.60 × 151.235 = 7350.021: $48.60.
+  // Forward again: 7350.021 JPY, which is ¥7350.
+  it("works back from a currency without minor units", () => {
+    expect(convertBackward({ amount: 7350, digits: 0 }, "151.235", 2)).toBe(
+      4860
+    );
+    expect(convertForward({ amount: 4860, digits: 2 }, "151.235", 0)).toBe(
+      7350
+    );
+  });
+
+  // €3.27 ÷ 3.25 = 1.0061538… KWD, which is 1.006 KWD to the fils.
+  // Forward again: 1.006 × 3.25 = 3.2695 EUR: half a cent up, €3.27.
+  it("works back into a currency with three minor-unit digits", () => {
+    expect(convertBackward({ amount: 327, digits: 2 }, "3.25", 3)).toBe(1006);
+    expect(convertForward({ amount: 1006, digits: 3 }, "3.25", 2)).toBe(327);
+  });
+
+  // 4.646 KWD ÷ 0.3765 = 12.33997… EUR, since 12.34 × 0.3765 = 4.64601:
+  // €12.34. Forward again: 4.64601 KWD, which is 4.646 KWD.
+  it("works back from a currency with three minor-unit digits", () => {
+    expect(convertBackward({ amount: 4646, digits: 3 }, "0.3765", 2)).toBe(
+      1234
+    );
+    expect(convertForward({ amount: 1234, digits: 2 }, "0.3765", 3)).toBe(4646);
   });
 });
 

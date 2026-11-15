@@ -29,6 +29,29 @@ export function convertForward(
 }
 
 /**
+ * The foreign amount a group-currency amount is worth at `rate`: `group` ÷
+ * the exchange rate, in minor units of a foreign currency with
+ * `foreignDigits` minor-unit digits, rounded half up. A suggested settlement
+ * switched to another currency proposes it, keeping the suggested figure.
+ *
+ * Preconditions: `group.amount` is a positive integer, and `rate` is as
+ * convertForward's.
+ */
+export function convertBackward(
+  group: MinorAmount,
+  rate: string,
+  foreignDigits: number
+): number {
+  const { units, scale } = readRate(rate);
+  return Number(
+    roundHalfUp(
+      BigInt(group.amount) * 10n ** BigInt(scale + foreignDigits),
+      units * 10n ** BigInt(group.digits)
+    )
+  );
+}
+
+/**
  * Whether `amount` (minor units of the group currency) agrees with the foreign
  * amount at `rate`: within 1 minor unit of the half-up conversion, or within
  * 0.5% of the foreign amount × the rate. A rate worked out from a bank amount
