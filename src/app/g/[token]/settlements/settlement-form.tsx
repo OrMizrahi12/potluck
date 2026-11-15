@@ -109,7 +109,8 @@ function message(
 
 /**
  * Records that one member paid another. A suggested settlement opens it with
- * `from`, `to` and `amount` filled in, all of which can still be changed.
+ * `from`, `to` and `amount` filled in, all of which can still be changed;
+ * switched to another currency, it keeps the suggested figure.
  * With `editing`, it edits a recorded settlement whose `initial` has a date.
  */
 export function SettlementForm({
@@ -120,6 +121,7 @@ export function SettlementForm({
   locale,
   members,
   initial,
+  suggested = false,
   editing = false,
 }: {
   action: (
@@ -141,6 +143,11 @@ export function SettlementForm({
     date?: string;
     foreign?: InitialForeignPart;
   };
+  /**
+   * Whether `initial.amount` is a suggested settlement's figure: switching
+   * to another currency keeps it and works the foreign amount backwards.
+   */
+  suggested?: boolean;
   editing?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -158,6 +165,7 @@ export function SettlementForm({
     date: date ?? todayHere,
     initialAmount: initial.amount,
     initialForeign: initial.foreign,
+    suggested,
   });
 
   // A converted figure the service would refuse shows as it's typed; a

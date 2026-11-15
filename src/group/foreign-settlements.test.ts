@@ -256,3 +256,58 @@ describe("refusing a settlement's foreign part", () => {
     expect(result).toEqual({ ok: false, reason: "amount-too-large" });
   });
 });
+
+describe("a suggested settlement switched to another currency", () => {
+  // Ana paid €90.00 for all three: Ben owes €30.00, the suggested figure.
+  // Worked backwards: €30.00 ÷ 1.0463 = 28.672465… CHF, proposed as CHF 28.67,
+  // and the group-currency amount stays €30.00.
+  it("leaves both members settled up", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, cai } = await zermattGroup(db);
+    await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "90.00",
+      date: "2026-11-13",
+      payerId: ana,
+      participantIds: [ana, ben, cai],
+    });
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: ben,
+      toId: ana,
+      amount: "30.00",
+      date: "2026-11-14",
+      foreign: { amount: "28.67", currency: "CHF", rate: "1.0463" },
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => m.balance)).toEqual([3000, 0, -3000]);
+  });
+
+  // Ana paid ¥3003 for all three: Ben owes ¥1001, the suggested figure.
+  // Worked backwards at 1 EUR = 160 JPY: ¥1001 ÷ 160 = 6.25625 EUR, proposed
+  // as €6.26. Forward again that's 6.26 × 160 = ¥1001.6, so ¥1002, one yen
+  // off; the group-currency amount still stays the suggested ¥1001.
+  it("leaves both members settled up when converting forward again is a minor unit off", async () => {
+    const db = await createTestDb();
+    const { linkToken, ana, ben, cai } = await zermattGroup(db, "JPY");
+    await addExpense(db, linkToken, {
+      description: "Fondue",
+      amount: "3003",
+      date: "2026-11-13",
+      payerId: ana,
+      participantIds: [ana, ben, cai],
+    });
+
+    const result = await addSettlement(db, linkToken, {
+      fromId: ben,
+      toId: ana,
+      amount: "1001",
+      date: "2026-11-14",
+      foreign: { amount: "6.26", currency: "EUR", rate: "160" },
+    });
+
+    if (!result.ok) throw new Error(`refused: ${result.reason}`);
+    expect(result.view.members.map((m) => m.balance)).toEqual([1001, 0, -1001]);
+  });
+});

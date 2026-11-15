@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { CURRENCIES, findCurrency } from "@/currency/currencies";
 import { minorToDecimal, parseAmount } from "@/money/amount";
 import {
+  convertBackward,
   convertForward,
   formatRate,
   rateFromBankAmount,
@@ -33,6 +34,11 @@ type Lookup = { kind: "none" } | { kind: "looking-up" } | RateAnswer;
  * looks up Frankfurter's rate through Potluck's server and proposes it.
  * Typing a rate or bank amount wins over an answer that comes later. An
  * entry's saved rate is never looked up again on a date change.
+ *
+ * With `suggested`, `initialAmount` is a suggested settlement's figure:
+ * switching to another currency keeps it as the group-currency amount and
+ * works the foreign amount backwards from it, until an amount or a bank
+ * amount is typed.
  */
 export function useAmountField({
   token,
@@ -41,6 +47,7 @@ export function useAmountField({
   date,
   initialAmount = "",
   initialForeign,
+  suggested = false,
 }: {
   token: string;
   currency: string;
@@ -49,6 +56,7 @@ export function useAmountField({
   date: string;
   initialAmount?: string;
   initialForeign?: InitialForeignPart;
+  suggested?: boolean;
 }) {
   const [paidIn, setPaidIn] = useState(initialForeign?.currency ?? currency);
   const [typed, setTyped] = useState(initialForeign?.amount ?? initialAmount);
@@ -61,6 +69,7 @@ export function useAmountField({
     initialForeign ? "saved" : "typed"
   );
   const [lookup, setLookup] = useState<Lookup>({ kind: "none" });
+  const [backwards, setBackwards] = useState(suggested);
   // The exchange rate and bank amount fields, folded away until asked for.
   const [overriding, setOverriding] = useState(false);
   const running = useRef<AbortController | null>(null);
@@ -109,10 +118,21 @@ export function useAmountField({
 
   const foreignCurrency =
     paidIn === currency ? undefined : findCurrency(paidIn);
+  const worked =
+    backwards && foreignCurrency
+      ? workBackwards(
+          initialAmount,
+          digits,
+          readRate(rateText),
+          foreignCurrency.digits
+        )
+      : undefined;
+  // What the amount field shows: worked backwards once there's a rate.
+  const shown = backwards && foreignCurrency ? (worked?.foreign ?? "") : typed;
   let rate: string | undefined;
   let groupAmount: number | undefined;
   if (foreignCurrency) {
-    const foreignMinor = positive(parseAmount(typed, foreignCurrency.digits));
+    const foreignMinor = positive(parseAmount(shown, foreignCurrency.digits));
     const foreign = foreignMinor && {
       amount: foreignMinor,
       digits: foreignCurrency.digits,
@@ -127,13 +147,16 @@ export function useAmountField({
       rate = readRate(rateText);
       if (foreign && rate) groupAmount = convertForward(foreign, rate, digits);
     }
+    // Converting forward again can be a minor unit off: the suggested
+    // figure stays, so saving settles both members up exactly.
+    if (worked) groupAmount = worked.group;
   }
 
   return {
     currency,
     digits,
     paidIn,
-    typed,
+    typed: shown,
     foreignCurrency,
     /** The rate the entry will be saved at, once there is one. */
     rate,
@@ -184,7 +207,10 @@ export function useAmountField({
       setSource("looked-up");
       setOverriding(false);
     },
-    type: setTyped,
+    type(text: string) {
+      setBackwards(false);
+      setTyped(text);
+    },
     typeRate(text: string) {
       typedSinceAsking.current = true;
       setRateText(text);
@@ -192,6 +218,9 @@ export function useAmountField({
       setSource("typed");
     },
     typeBank(text: string) {
+      // The foreign amount worked backwards stays; the bank amount now leads.
+      setTyped(shown);
+      setBackwards(false);
       typedSinceAsking.current = true;
       setBankText(text);
       setBankTyped(true);
@@ -395,6 +424,27 @@ function LookupNote({
       )}
     </div>
   );
+}
+
+/**
+ * A suggested settlement's figure (`suggested`, typed in the group currency)
+ * in minor units, and the foreign amount worked backwards from it at `rate`,
+ * as typed text. Undefined until there's a rate.
+ */
+function workBackwards(
+  suggested: string,
+  digits: number,
+  rate: string | undefined,
+  foreignDigits: number
+): { group: number; foreign: string } | undefined {
+  const group = positive(parseAmount(suggested, digits));
+  if (!group || !rate) return undefined;
+  const foreign = convertBackward(
+    { amount: group, digits },
+    rate,
+    foreignDigits
+  );
+  return { group, foreign: minorToDecimal(foreign, foreignDigits) };
 }
 
 /** A minor-unit amount when it's a positive finite one, else undefined. */

@@ -69,6 +69,7 @@ async function NewSettlement({
         locale={locale}
         members={group.members.map(({ id, name }) => ({ id, name }))}
         initial={initial}
+        suggested={amount !== ""}
       />
     </>
   );
