@@ -7,6 +7,17 @@ import type {
   EditSettlementRefusal,
 } from "@/group/service";
 import { Refusal, STALE_MESSAGE } from "../refusal";
+// PROTOTYPE, throw away (#50).
+import { minorToDecimal, parseAmount } from "@/money/amount";
+import { pretendSaved } from "../_prototype-foreign-amount/fake-rates";
+import { StoredPanel } from "../_prototype-foreign-amount/parts";
+import { PrototypeSwitcher } from "../_prototype-foreign-amount/switcher";
+import {
+  formatRate,
+  useConversion,
+  usePrototype,
+} from "../_prototype-foreign-amount/use-conversion";
+import { AmountBlock } from "../_prototype-foreign-amount/variants";
 
 type Member = { id: string; name: string };
 
@@ -93,13 +104,37 @@ export function SettlementForm({
   // the browser knows.
   const [date, setDate] = useState(initial.date);
   const todayHere = useSyncExternalStore(noSubscription, today, () => "");
+  // PROTOTYPE: reopening a settlement pretends it was recorded in a foreign
+  // currency; a pre-filled amount is a suggested settlement's.
+  const proto = usePrototype();
+  const savedMinor = editing ? parseAmount(initial.amount, digits) : undefined;
+  const pretend =
+    savedMinor !== undefined
+      ? pretendSaved(currency, savedMinor, digits)
+      : undefined;
+  const conv = useConversion({
+    groupCurrency: currency,
+    scenario: proto?.scenario ?? "ok",
+    initialAmount: initial.amount,
+    suggested: !editing && initial.amount !== "",
+    saved: pretend
+      ? {
+          currency: pretend.currency,
+          amount: minorToDecimal(pretend.foreignMinor, pretend.digits),
+          rate: formatRate(pretend.rate),
+          group: initial.amount,
+        }
+      : undefined,
+  });
 
   return (
     <form
-      action={formAction}
+      action={proto ? undefined : formAction}
+      onSubmit={proto ? (e) => e.preventDefault() : undefined}
       className="stack"
       aria-label={editing ? "Edit the settlement" : "Record a settlement"}
     >
+      {proto && <PrototypeSwitcher />}
       <label className="field">
         <span>From</span>
         <select
@@ -138,18 +173,27 @@ export function SettlementForm({
         </select>
       </label>
 
-      <label className="field">
-        <span>Amount ({currency})</span>
-        <input
-          name="amount"
-          required
-          inputMode={digits === 0 ? "numeric" : "decimal"}
-          placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
-          autoComplete="off"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+      {proto ? (
+        <AmountBlock
+          variant={proto.variant}
+          conv={conv}
+          date={date ?? todayHere}
+          entry="settlement"
         />
-      </label>
+      ) : (
+        <label className="field">
+          <span>Amount ({currency})</span>
+          <input
+            name="amount"
+            required
+            inputMode={digits === 0 ? "numeric" : "decimal"}
+            placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
+            autoComplete="off"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+      )}
 
       <label className="field">
         <span>Date</span>
@@ -158,7 +202,10 @@ export function SettlementForm({
           type="date"
           required
           value={date ?? todayHere}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            conv.dateChanged(e.target.value);
+          }}
         />
       </label>
 
@@ -166,6 +213,8 @@ export function SettlementForm({
         text={state.refusal && message(state.refusal, { currency, digits })}
         reload={state.refusal === "stale-version"}
       />
+
+      {proto && <StoredPanel conv={conv} />}
 
       <button type="submit" disabled={pending}>
         {editing

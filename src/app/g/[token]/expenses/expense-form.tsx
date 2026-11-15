@@ -6,6 +6,17 @@ import { LIMITS } from "@/group/limits";
 import type { AddExpenseRefusal, EditExpenseRefusal } from "@/group/service";
 import { Refusal, STALE_MESSAGE } from "../refusal";
 import { WhoAreYouPrompt } from "../who-are-you";
+// PROTOTYPE, throw away (#50).
+import { minorToDecimal, parseAmount } from "@/money/amount";
+import { pretendSaved } from "../_prototype-foreign-amount/fake-rates";
+import { StoredPanel } from "../_prototype-foreign-amount/parts";
+import { PrototypeSwitcher } from "../_prototype-foreign-amount/switcher";
+import {
+  formatRate,
+  useConversion,
+  usePrototype,
+} from "../_prototype-foreign-amount/use-conversion";
+import { AmountBlock } from "../_prototype-foreign-amount/variants";
 
 type Member = { id: string; name: string; active: boolean };
 
@@ -127,6 +138,26 @@ export function ExpenseForm({
   // the browser knows.
   const [date, setDate] = useState(initial?.date);
   const todayHere = useSyncExternalStore(noSubscription, today, () => "");
+  // PROTOTYPE: reopening an expense pretends it was recorded in a foreign currency.
+  const proto = usePrototype();
+  const savedMinor = initial ? parseAmount(initial.amount, digits) : undefined;
+  const pretend =
+    savedMinor !== undefined
+      ? pretendSaved(currency, savedMinor, digits)
+      : undefined;
+  const conv = useConversion({
+    groupCurrency: currency,
+    scenario: proto?.scenario ?? "ok",
+    saved:
+      initial && pretend
+        ? {
+            currency: pretend.currency,
+            amount: minorToDecimal(pretend.foreignMinor, pretend.digits),
+            rate: formatRate(pretend.rate),
+            group: initial.amount,
+          }
+        : undefined,
+  });
 
   function toggle(id: string, checked: boolean) {
     const next = new Set(participantIds);
@@ -152,10 +183,12 @@ export function ExpenseForm({
 
   return (
     <form
-      action={formAction}
+      action={proto ? undefined : formAction}
+      onSubmit={proto ? (e) => e.preventDefault() : undefined}
       className="stack"
       aria-label={editing ? "Edit the expense" : "Add an expense"}
     >
+      {proto && <PrototypeSwitcher />}
       <label className="field">
         <span>Description</span>
         <input
@@ -168,18 +201,27 @@ export function ExpenseForm({
         />
       </label>
 
-      <label className="field">
-        <span>Amount ({currency})</span>
-        <input
-          name="amount"
-          required
-          inputMode={digits === 0 ? "numeric" : "decimal"}
-          placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
-          autoComplete="off"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+      {proto ? (
+        <AmountBlock
+          variant={proto.variant}
+          conv={conv}
+          date={date ?? todayHere}
+          entry="expense"
         />
-      </label>
+      ) : (
+        <label className="field">
+          <span>Amount ({currency})</span>
+          <input
+            name="amount"
+            required
+            inputMode={digits === 0 ? "numeric" : "decimal"}
+            placeholder={digits === 0 ? "0" : `0.${"0".repeat(digits)}`}
+            autoComplete="off"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+      )}
 
       <label className="field">
         <span>Date</span>
@@ -188,7 +230,10 @@ export function ExpenseForm({
           type="date"
           required
           value={date ?? todayHere}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            conv.dateChanged(e.target.value);
+          }}
         />
       </label>
 
@@ -238,6 +283,8 @@ export function ExpenseForm({
         }
         reload={state.refusal === "stale-version"}
       />
+
+      {proto && <StoredPanel conv={conv} />}
 
       <button type="submit" disabled={pending}>
         {editing

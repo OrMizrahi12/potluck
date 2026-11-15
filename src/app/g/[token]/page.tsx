@@ -14,6 +14,15 @@ import { formatAmount, formatDate } from "@/money/format";
 import { visitorLocale } from "../../locale";
 import { GroupLink } from "./group-link";
 import { WhoAreYou } from "./who-are-you";
+// PROTOTYPE, throw away (#50).
+import {
+  ExpenseAmount,
+  ExpenseNote,
+  SettlementAmount,
+  prototypeVariant,
+} from "./_prototype-foreign-amount/list";
+import { PrototypeSwitcher } from "./_prototype-foreign-amount/switcher";
+import type { Variant } from "./_prototype-foreign-amount/shared";
 
 export const metadata: Metadata = {
   title: "Group · Potluck",
@@ -30,7 +39,20 @@ function expenseLimit(asked: string | string[] | undefined): number {
   return Math.min(n, LIMITS.expenses);
 }
 
-async function Group({ token, shown }: { token: string; shown: number }) {
+async function Group({
+  token,
+  shown,
+  variant,
+}: {
+  token: string;
+  shown: number;
+  variant?: Variant;
+}) {
+  // PROTOTYPE: keep ?variant= on the links into the forms.
+  const keep = (href: string) =>
+    variant
+      ? `${href}${href.includes("?") ? "&" : "?"}variant=${variant}`
+      : href;
   const [group, locale] = await Promise.all([
     readGroupView(getDb(), token, { expenseLimit: shown }),
     visitorLocale(),
@@ -43,6 +65,7 @@ async function Group({ token, shown }: { token: string; shown: number }) {
   return (
     <>
       <h1>{group.name}</h1>
+      {variant && <PrototypeSwitcher />}
       <WhoAreYou
         token={token}
         name={group.name}
@@ -60,10 +83,13 @@ async function Group({ token, shown }: { token: string; shown: number }) {
       </p>
 
       <div className="actions">
-        <Link className="button" href={`/g/${token}/expenses/new`}>
+        <Link className="button" href={keep(`/g/${token}/expenses/new`)}>
           Add an expense
         </Link>
-        <Link className="button secondary" href={`/g/${token}/settlements/new`}>
+        <Link
+          className="button secondary"
+          href={keep(`/g/${token}/settlements/new`)}
+        >
           Record a settlement
         </Link>
       </div>
@@ -91,11 +117,13 @@ async function Group({ token, shown }: { token: string; shown: number }) {
                 <span className="amount">{money(s.amount)}</span>
               </span>{" "}
               <Link
-                href={`/g/${token}/settlements/new?${new URLSearchParams({
-                  from: s.fromId,
-                  to: s.toId,
-                  amount: String(s.amount),
-                })}`}
+                href={keep(
+                  `/g/${token}/settlements/new?${new URLSearchParams({
+                    from: s.fromId,
+                    to: s.toId,
+                    amount: String(s.amount),
+                  })}`
+                )}
               >
                 Record this settlement
               </Link>
@@ -109,14 +137,16 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         <p>No expenses yet.</p>
       ) : (
         <ul className="expenses" aria-labelledby="expenses">
-          {group.expenses.map((expense) => (
+          {group.expenses.map((expense, i) => (
             <Expense
               key={expense.id}
               expense={expense}
               nameOf={nameOf}
               money={money}
               locale={locale}
-              editHref={`/g/${token}/expenses/${expense.id}`}
+              editHref={keep(`/g/${token}/expenses/${expense.id}`)}
+              foreign={i < 2 ? variant : undefined}
+              group={group}
             />
           ))}
         </ul>
@@ -136,16 +166,25 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         <p>No settlements yet.</p>
       ) : (
         <ul className="settlements" aria-labelledby="settlements">
-          {group.settlements.map((s) => (
+          {group.settlements.map((s, i) => (
             <li key={s.id}>
               <span>
                 <span className="name">{nameOf.get(s.fromId)}</span> paid{" "}
                 <span className="name">{nameOf.get(s.toId)}</span>{" "}
-                <span className="amount">{money(s.amount)}</span>
+                {variant && i === 0 ? (
+                  <SettlementAmount
+                    variant={variant}
+                    minor={s.amount}
+                    group={group}
+                    locale={locale}
+                  />
+                ) : (
+                  <span className="amount">{money(s.amount)}</span>
+                )}
               </span>{" "}
               <span className="muted">{formatDate(s.date, locale)}</span>{" "}
               <Link
-                href={`/g/${token}/settlements/${s.id}`}
+                href={keep(`/g/${token}/settlements/${s.id}`)}
                 aria-label={`Edit the settlement from ${nameOf.get(s.fromId)} to ${nameOf.get(s.toId)}`}
               >
                 Edit
@@ -179,20 +218,41 @@ function Expense({
   money,
   locale,
   editHref,
+  foreign,
+  group,
 }: {
   expense: GroupView["expenses"][number];
   nameOf: Map<string, string>;
   money: (minor: number) => string;
   locale: string;
   editHref: string;
+  foreign?: Variant;
+  group: { currency: string; digits: number };
 }) {
   return (
     <li aria-label={expense.description}>
       <div className="expense-head">
         <span className="name">{expense.description}</span>
-        <span className="amount">{money(expense.amount)}</span>
+        {foreign ? (
+          <ExpenseAmount
+            variant={foreign}
+            minor={expense.amount}
+            group={group}
+            locale={locale}
+          />
+        ) : (
+          <span className="amount">{money(expense.amount)}</span>
+        )}
       </div>
       <p className="muted">
+        {foreign && (
+          <ExpenseNote
+            variant={foreign}
+            minor={expense.amount}
+            group={group}
+            locale={locale}
+          />
+        )}
         Paid by {nameOf.get(expense.payerId)} ·{" "}
         {formatDate(expense.date, locale)} ·{" "}
         <Link href={editHref} aria-label={`Edit ${expense.description}`}>
@@ -222,7 +282,11 @@ export default function GroupPage({
     <main>
       <Suspense fallback={<p>Opening the group…</p>}>
         {Promise.all([params, searchParams]).then(([{ token }, query]) => (
-          <Group token={token} shown={expenseLimit(query.expenses)} />
+          <Group
+            token={token}
+            shown={expenseLimit(query.expenses)}
+            variant={prototypeVariant(query.variant)}
+          />
         ))}
       </Suspense>
     </main>
