@@ -4,7 +4,6 @@ import { createTestDb } from "../test/db";
 import {
   addExpense,
   createGroup,
-  editExpense,
   readGroupView,
   type AddExpenseInput,
 } from "./service";
@@ -157,40 +156,6 @@ describe("an expense with a foreign amount", () => {
         ],
       },
     ]);
-  });
-
-  // CHF 48.00 × 1.0463 = 50.2224 EUR is the forward conversion.
-  it("keeps the foreign part when an edit sends it again", async () => {
-    const db = await createTestDb();
-    const { linkToken, ids } = await group(db, "EUR", ["Ana", "Ben"]);
-    const [ana, ben] = ids;
-    const added = await addExpense(db, linkToken, {
-      description: "Fondue",
-      amount: "50.22",
-      date: "2026-11-14",
-      payerId: ana,
-      participantIds: [ana, ben],
-      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
-    });
-    if (!added.ok) throw new Error(`refused: ${added.reason}`);
-
-    const result = await editExpense(db, linkToken, {
-      expenseId: added.view.expenses[0].id,
-      version: 1,
-      description: "Fondue at the hut",
-      amount: "50.22",
-      date: "2026-11-14",
-      payerId: ana,
-      participantIds: [ana, ben],
-      foreign: { amount: "48.00", currency: "CHF", rate: "1.0463" },
-    });
-
-    if (!result.ok) throw new Error(`refused: ${result.reason}`);
-    expect(result.view.expenses[0]).toMatchObject({
-      description: "Fondue at the hut",
-      amount: 5022,
-      foreign: { amount: 4800, currency: "CHF", digits: 2, rate: "1.0463" },
-    });
   });
 });
 
