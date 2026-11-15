@@ -43,6 +43,13 @@
       "when": 1794753796392,
       "tag": "0005_rate_lookups",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794756898879,
+      "tag": "0006_settlement_foreign_amounts",
+      "breakpoints": true
     }
   ]
 }

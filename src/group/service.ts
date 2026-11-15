@@ -10,7 +10,7 @@ import {
 } from "../db/schema";
 import type { Db } from "../db/types";
 import { parseAmount } from "../money/amount";
-import { agreesWithRate } from "../money/foreign-amount";
+import { agreesWithRate, convertForward } from "../money/foreign-amount";
 import {
   computeGroupMoney,
   type Share,
@@ -49,7 +49,7 @@ export type ExpenseView = {
 };
 
 /**
- * What an expense was really paid in. The entry's `amount` is the
+ * What an expense or settlement was really paid in. The entry's `amount` is the
  * group-currency figure this converted to, frozen when it was recorded.
  */
 export type ForeignPartView = {
@@ -94,6 +94,8 @@ export type SettlementView = {
   /** YYYY-MM-DD. */
   date: string;
   version: number;
+  /** Present when the settlement was paid in a currency other than the group currency. */
+  foreign?: ForeignPartView;
 };
 
 /** How many expenses a group view shows unless asked for more. */
@@ -462,6 +464,15 @@ async function checkExpense(
     date: input.date,
     payerId: input.payerId,
     participantIds,
+    ...storedForeignPart(foreign),
+  };
+}
+
+/** A foreign part read by readForeignPart, as its columns will hold it. */
+function storedForeignPart(
+  foreign: Exclude<ReturnType<typeof readForeignPart>, string> | undefined
+): StoredForeignPart {
+  return {
     foreignAmount: foreign?.foreignAmount ?? null,
     foreignCurrency: foreign?.foreignCurrency ?? null,
     exchangeRate: foreign?.exchangeRate ?? null,
@@ -550,7 +561,10 @@ export type SettlementRefusal =
   | "date-unreadable"
   | "from-unknown"
   | "to-unknown"
-  | "settlement-to-self";
+  | "settlement-to-self"
+  | ForeignPartRefusal
+  | "amount-disagrees-with-rate"
+  | "foreign-amount-converts-to-zero";
 
 export type AddSettlementRefusal =
   "group-unknown" | SettlementRefusal | "too-many-settlements";
@@ -560,10 +574,19 @@ export type AddSettlementInput = {
   fromId: string;
   /** The member who was paid. */
   toId: string;
-  /** As typed, in the group's currency. */
+  /**
+   * In the group's currency: as typed, or, with a foreign part, the
+   * converted figure the form showed.
+   */
   amount: string;
   /** YYYY-MM-DD. */
   date: string;
+  /**
+   * What was really paid, when not in the group currency, under the same
+   * rules as an expense's. Without it the settlement has none, so an edit
+   * that leaves it out clears it.
+   */
+  foreign?: ForeignPartInput;
 };
 
 /**
@@ -674,14 +697,32 @@ async function checkSettlement(
   group: { id: string; currency: string },
   input: AddSettlementInput
 ): Promise<
-  | { fromId: string; toId: string; amount: number; date: string }
+  | ({
+      fromId: string;
+      toId: string;
+      amount: number;
+      date: string;
+    } & StoredForeignPart)
   | SettlementRefusal
 > {
   if (input.fromId === input.toId) return "settlement-to-self";
   if (!isCalendarDate(input.date)) return "date-unreadable";
 
-  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  const groupDigits = currencyOf(group.currency).digits;
+  const foreign = input.foreign && readForeignPart(input.foreign, group);
+  if (typeof foreign === "string") return foreign;
+  const paid = foreign && {
+    foreign: { amount: foreign.foreignAmount, digits: foreign.digits },
+    rate: foreign.exchangeRate,
+  };
+  // Named for what it is, rather than as an amount of zero nobody typed.
+  if (paid && convertForward(paid.foreign, paid.rate, groupDigits) === 0)
+    return "foreign-amount-converts-to-zero";
+  // The v1 checks, on the converted figure when there's a foreign part.
+  const amount = readAmount(input.amount, groupDigits);
   if (typeof amount === "string") return amount;
+  if (paid && !agreesWithRate(amount, groupDigits, paid.foreign, paid.rate))
+    return "amount-disagrees-with-rate";
 
   const memberIds = await memberIdsOf(tx, group.id);
   if (!memberIds.has(input.fromId)) return "from-unknown";
@@ -692,6 +733,7 @@ async function checkSettlement(
     toId: input.toId,
     amount,
     date: input.date,
+    ...storedForeignPart(foreign),
   };
 }
 
@@ -1060,6 +1102,9 @@ export async function readGroupView(
       amount: settlements.amount,
       date: settlements.date,
       version: settlements.version,
+      foreignAmount: settlements.foreignAmount,
+      foreignCurrency: settlements.foreignCurrency,
+      exchangeRate: settlements.exchangeRate,
     })
     .from(settlements)
     .where(eq(settlements.groupId, group.id))
@@ -1108,7 +1153,12 @@ export async function readGroupView(
         ...foreignPartView({ foreignAmount, foreignCurrency, exchangeRate }),
       })),
     hasOlderExpenses: expenseRows.length > expenseLimit,
-    settlements: settlementRows,
+    settlements: settlementRows.map(
+      ({ foreignAmount, foreignCurrency, exchangeRate, ...s }) => ({
+        ...s,
+        ...foreignPartView({ foreignAmount, foreignCurrency, exchangeRate }),
+      })
+    ),
     suggestedSettlements: money.suggestedSettlements,
   };
 }

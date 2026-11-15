@@ -168,6 +168,12 @@ export const settlements = pgTable(
       .references(() => members.id),
     // Minor units, as wide as an expense's amount.
     amount: bigint("amount", { mode: "number" }).notNull(),
+    // The foreign amount, when the settlement was paid in another currency,
+    // as for an expense: `amount` stays the group-currency figure it
+    // converted to at `exchangeRate`, frozen when recorded.
+    foreignAmount: bigint("foreign_amount", { mode: "number" }),
+    foreignCurrency: text("foreign_currency"),
+    exchangeRate: numeric("exchange_rate"),
     date: date("date", { mode: "string" }).notNull(),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -178,6 +184,11 @@ export const settlements = pgTable(
     check("settlements_amount_positive", sql`${t.amount} > 0`),
     // Backstop for the service's refusal of a settlement to oneself.
     check("settlements_from_not_to", sql`${t.fromId} <> ${t.toId}`),
+    // A foreign part is whole or absent, as for an expense.
+    check(
+      "settlements_foreign_part_whole",
+      sql`(${t.foreignAmount} IS NULL AND ${t.foreignCurrency} IS NULL AND ${t.exchangeRate} IS NULL) OR (${t.foreignAmount} IS NOT NULL AND ${t.foreignCurrency} IS NOT NULL AND ${t.exchangeRate} IS NOT NULL AND ${t.foreignAmount} > 0 AND ${t.exchangeRate} > 0)`
+    ),
     // The group page lists settlements newest first.
     index("settlements_group_newest_first").on(
       t.groupId,

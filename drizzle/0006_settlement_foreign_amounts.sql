@@ -1,0 +1,4 @@
+ALTER TABLE "settlements" ADD COLUMN "foreign_amount" bigint;--> statement-breakpoint
+ALTER TABLE "settlements" ADD COLUMN "foreign_currency" text;--> statement-breakpoint
+ALTER TABLE "settlements" ADD COLUMN "exchange_rate" numeric;--> statement-breakpoint
+ALTER TABLE "settlements" ADD CONSTRAINT "settlements_foreign_part_whole" CHECK (("settlements"."foreign_amount" IS NULL AND "settlements"."foreign_currency" IS NULL AND "settlements"."exchange_rate" IS NULL) OR ("settlements"."foreign_amount" IS NOT NULL AND "settlements"."foreign_currency" IS NOT NULL AND "settlements"."exchange_rate" IS NOT NULL AND "settlements"."foreign_amount" > 0 AND "settlements"."exchange_rate" > 0));
