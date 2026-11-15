@@ -32,7 +32,8 @@ type Lookup = { kind: "none" } | { kind: "looking-up" } | RateAnswer;
  * Picking a foreign currency, or changing the date through `changeDate`,
  * looks up Frankfurter's rate through Potluck's server and proposes it.
  * Typing a rate or bank amount wins over an answer that comes later. An
- * entry's saved rate is never looked up again on a date change.
+ * entry's saved rate is kept on a date change: the new date's rate is only
+ * offered beside it, and nothing is offered when the lookup fails.
  */
 export function useAmountField({
   token,
@@ -67,13 +68,22 @@ export function useAmountField({
   // Whether a rate or bank amount was typed since the running lookup began.
   const typedSinceAsking = useRef(false);
 
-  /** Asks Potluck's server for the rate of `code` on `onDate` and proposes it. */
-  function lookUp(code: string, onDate: string, typedAlready: boolean) {
+  /**
+   * Asks Potluck's server for the rate of `code` on `onDate` and proposes it,
+   * or, to `offer` it beside a saved rate, only keeps a rate found.
+   */
+  function lookUp(
+    code: string,
+    onDate: string,
+    typedAlready: boolean,
+    offer = false
+  ) {
     running.current?.abort();
     const controller = new AbortController();
     running.current = controller;
     typedSinceAsking.current = typedAlready;
-    setLookup({ kind: "looking-up" });
+    // An offer is quiet: no "looking up" while the saved rate stands.
+    setLookup({ kind: offer ? "none" : "looking-up" });
     fetch(`/g/${token}/rate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -88,6 +98,10 @@ export function useAmountField({
         // A later pick or date has asked again since.
         if (controller.signal.aborted) return;
         running.current = null;
+        if (offer) {
+          if (answer.kind === "found") setLookup(answer);
+          return;
+        }
         setLookup(answer);
         if (answer.kind !== "found") {
           setOverriding(true);
@@ -164,7 +178,11 @@ export function useAmountField({
     },
     /** The form calls this when the entry's date changes to `newDate`. */
     changeDate(newDate: string) {
-      if (!foreignCurrency || source === "saved") return;
+      if (!foreignCurrency) return;
+      if (source === "saved") {
+        lookUp(foreignCurrency.code, newDate, false, true);
+        return;
+      }
       // A rate or bank amount typed before the change stays.
       const typed = source === "typed" && (rateText !== "" || bankTyped);
       lookUp(foreignCurrency.code, newDate, typed);
@@ -277,6 +295,20 @@ export function AmountField({
               = {formatAmount(groupAmount, { currency, digits }, locale)} · 1{" "}
               {foreignCurrency.code} = {formatRate(rate)} {currency} ·{" "}
               {sourceNote(field, locale)}
+            </p>
+          )}
+          {field.source === "saved" && field.lookup.kind === "found" && (
+            <p className="muted quiet-line">
+              Rate for {formatDate(field.lookup.date, locale)}: 1{" "}
+              {foreignCurrency.code} = {formatRate(field.lookup.rate)}{" "}
+              {currency} ·{" "}
+              <button
+                type="button"
+                className="link-button"
+                onClick={field.takeLookedUpRate}
+              >
+                Use this rate
+              </button>
             </p>
           )}
           <p role="status" className="error">
