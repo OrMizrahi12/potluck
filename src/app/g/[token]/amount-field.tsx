@@ -11,6 +11,7 @@ import {
 } from "@/money/foreign-amount";
 import { formatAmount, formatDate } from "@/money/format";
 import type { RateAnswer } from "@/group/rate-lookup";
+import type { ForeignPartRefusal } from "@/group/service";
 
 /** An entry's foreign part as the edit page hands it over: typed text. */
 export type InitialForeignPart = {
@@ -260,6 +261,51 @@ export function useAmountField({
 }
 
 export type AmountFieldState = ReturnType<typeof useAmountField>;
+
+/** What a member sees when the amount typed in the field can't be read. */
+export function unreadableAmountMessage(field: AmountFieldState): string {
+  const typedDigits = field.foreignCurrency?.digits ?? field.digits;
+  return typedDigits === 0
+    ? `Type the amount as a whole number, like ${example(0)}.`
+    : `Type the amount as a number with up to ${typedDigits} decimals, like ${example(typedDigits)}.`;
+}
+
+/** An amount as it's typed in a currency with `digits`: "1500", "12.50", "12.500". */
+function example(digits: number): string {
+  return digits === 0 ? "1500" : `12.${"5".padEnd(digits, "0")}`;
+}
+
+/** What a member sees when the group service refuses an entry's foreign part. */
+const FOREIGN_PART_MESSAGES: Record<
+  ForeignPartRefusal,
+  (field: AmountFieldState) => string
+> = {
+  "foreign-currency-unknown": () => "Pick a currency from the list.",
+  "foreign-currency-is-group-currency": () => "Pick a currency from the list.",
+  "foreign-amount-unreadable": unreadableAmountMessage,
+  "foreign-amount-not-positive": () => "The amount must be more than zero.",
+  "foreign-amount-too-large": () =>
+    "Type the amount with at most 12 digits before the decimal point.",
+  "exchange-rate-unreadable": ({ currency }) =>
+    `Type the exchange rate, or what your bank charged in ${currency}.`,
+  "exchange-rate-not-positive": () =>
+    "The exchange rate must be more than zero.",
+};
+
+/** Whether `refusal` is about the entry's foreign part. */
+export function isForeignPartRefusal(
+  refusal: string
+): refusal is ForeignPartRefusal {
+  return Object.hasOwn(FOREIGN_PART_MESSAGES, refusal);
+}
+
+/** What a member sees when the group service refuses an entry's foreign part. */
+export function foreignPartMessage(
+  refusal: ForeignPartRefusal,
+  field: AmountFieldState
+): string {
+  return FOREIGN_PART_MESSAGES[refusal](field);
+}
 
 /**
  * One amount field with a currency picker beside it, defaulting to the group

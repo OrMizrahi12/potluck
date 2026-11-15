@@ -1,4 +1,5 @@
 import type { AddExpenseInput } from "@/group/service";
+import { readForeignPartFields } from "../read-foreign-part-fields";
 
 /** The expense form's fields, as the group service takes them. */
 export function readExpenseForm(form: FormData): AddExpenseInput {
@@ -9,16 +10,6 @@ export function readExpenseForm(form: FormData): AddExpenseInput {
     payerId: String(form.get("payer") ?? ""),
     participantIds: [...new Set(form.getAll("participant").map(String))],
   };
-  // The form sends a foreign currency only when one other than the group
-  // currency is picked.
-  const foreignCurrency = String(form.get("foreignCurrency") ?? "");
-  if (foreignCurrency === "") return input;
-  return {
-    ...input,
-    foreign: {
-      amount: String(form.get("foreignAmount") ?? ""),
-      currency: foreignCurrency,
-      rate: String(form.get("exchangeRate") ?? ""),
-    },
-  };
+  const foreign = readForeignPartFields(form);
+  return foreign ? { ...input, foreign } : input;
 }

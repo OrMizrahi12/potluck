@@ -7,6 +7,9 @@ import type { AddExpenseRefusal, EditExpenseRefusal } from "@/group/service";
 import { formatAmount } from "@/money/format";
 import {
   AmountField,
+  foreignPartMessage,
+  isForeignPartRefusal,
+  unreadableAmountMessage,
   useAmountField,
   type AmountFieldState,
   type InitialForeignPart,
@@ -29,11 +32,6 @@ function today(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-/** An amount as it's typed in this currency: "1500", "12.50", "12.500". */
-function example(digits: number): string {
-  return digits === 0 ? "1500" : `12.${"5".padEnd(digits, "0")}`;
 }
 
 /**
@@ -70,8 +68,8 @@ function message(
     locale: string;
   }
 ): string {
-  const { currency, digits, foreignCurrency } = field;
-  const typedDigits = foreignCurrency?.digits ?? digits;
+  const { currency } = field;
+  if (isForeignPartRefusal(refusal)) return foreignPartMessage(refusal, field);
   switch (refusal) {
     case "group-unknown":
       return "This group doesn't exist any more.";
@@ -84,31 +82,17 @@ function message(
     case "description-too-long":
       return `Keep the description to ${LIMITS.descriptionLength} characters.`;
     case "amount-unreadable":
-    case "foreign-amount-unreadable":
-      return typedDigits === 0
-        ? `Type the amount as a whole number, like ${example(0)}.`
-        : `Type the amount as a number with up to ${typedDigits} decimals, like ${example(typedDigits)}.`;
+      return unreadableAmountMessage(field);
     case "amount-not-positive":
       return (
         conversionProblem(field, participants, locale) ??
         "The amount must be more than zero."
       );
-    case "foreign-amount-not-positive":
-      return "The amount must be more than zero.";
     case "amount-too-large":
       return (
         conversionProblem(field, participants, locale) ??
         `An expense can be at most ${LIMITS.amountMajorUnits.toLocaleString("en")} ${currency}.`
       );
-    case "foreign-amount-too-large":
-      return "Type the amount with at most 12 digits before the decimal point.";
-    case "foreign-currency-unknown":
-    case "foreign-currency-is-group-currency":
-      return "Pick a currency from the list.";
-    case "exchange-rate-unreadable":
-      return `Type the exchange rate, or what your bank charged in ${currency}.`;
-    case "exchange-rate-not-positive":
-      return "The exchange rate must be more than zero.";
     case "amount-disagrees-with-rate":
       return `The amount in ${currency} doesn't match the exchange rate. Check the rate and try again.`;
     case "date-unreadable":
