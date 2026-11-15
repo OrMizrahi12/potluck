@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { createGroup } from "./helpers";
 
 // What `npm run dev` prints, copied to a file (scripts/dev.mjs). Only a
 // server started that way from this checkout can be read; a deployed one can't.
@@ -9,12 +10,20 @@ const DEV_LOG = path.resolve(".data/logs/dev-latest.log");
 /** A documentation-only address (RFC 5737): it can't be anyone's. */
 const CLIENT_IP = "203.0.113.7";
 
-test("the server doesn't log a writer's IP address", async ({ browser }) => {
+test.beforeEach(() => {
   test.skip(
     !!process.env.BASE_URL || !existsSync(DEV_LOG),
     "needs the dev server's log: run `npm run dev` in this checkout"
   );
+});
 
+/** Reads what the log gains from now on. */
+function watchLog() {
+  const start = statSync(DEV_LOG).size;
+  return () => readFileSync(DEV_LOG).subarray(start).toString("utf8");
+}
+
+test("the server doesn't log a writer's IP address", async ({ browser }) => {
   // The headers a proxy or Vercel sets to carry the visitor's address.
   const context = await browser.newContext({
     extraHTTPHeaders: {
@@ -24,9 +33,7 @@ test("the server doesn't log a writer's IP address", async ({ browser }) => {
     },
   });
   const page = await context.newPage();
-  const logStart = statSync(DEV_LOG).size;
-  const loggedSinceStart = () =>
-    readFileSync(DEV_LOG).subarray(logStart).toString("utf8");
+  const loggedSinceStart = watchLog();
 
   await page.goto("/");
   await page.getByLabel("Group name").fill(`Logs ${Date.now()}`);
@@ -42,4 +49,25 @@ test("the server doesn't log a writer's IP address", async ({ browser }) => {
     .toMatch(/POST \/ [\s\S]*createGroupAction/);
   expect(loggedSinceStart()).not.toContain(CLIENT_IP);
   await context.close();
+});
+
+test("the log doesn't record a group's link token", async ({ page }) => {
+  const loggedSinceStart = watchLog();
+  await createGroup(page, {
+    name: `Logs ${Date.now()}`,
+    currency: "EUR",
+    memberNames: ["Ana"],
+  });
+  const token = new URL(page.url()).pathname.split("/").pop()!;
+
+  await page.goto(`/g/${token}`);
+  await expect.poll(loggedSinceStart).toMatch(/GET \/g\/<token> 200/);
+  expect(loggedSinceStart()).not.toContain(token);
+});
+
+test("the log masks a malformed group link too", async ({ page }) => {
+  const loggedSinceStart = watchLog();
+  await page.goto("/g/wp-login.php");
+  await expect.poll(loggedSinceStart).toMatch(/GET \/g\/<token> 404/);
+  expect(loggedSinceStart()).not.toContain("wp-login.php");
 });

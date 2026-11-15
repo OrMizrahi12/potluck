@@ -1,6 +1,8 @@
 // `npm run dev`: runs `next dev` and copies everything it prints, stdout and
 // stderr, to .data/logs/dev-latest.log, so agents can read what the developer's
 // own terminal shows. The terminal keeps its colours; the log is plain text.
+// The log masks group tokens: a group's link is its only access control, so
+// every path under /g/ is written as /g/<token>; the terminal shows them whole.
 // Each run starts the log afresh. It serves on the PORT in .env.local, which a
 // worktree gets from `npm run setup:worktree`, else on 3000; --port overrides.
 import { spawn } from "node:child_process";
@@ -41,12 +43,20 @@ const child = spawn(
   }
 );
 
-// Strip colour codes per whole line, so a code split across chunks can't leak into the log.
+// Clean the log per whole line, so a colour code or a token split across
+// chunks can't leak into it.
+function forLog(line) {
+  return stripVTControlCharacters(line).replace(
+    /\/g\/[^\s?#/]+/g,
+    "/g/<token>"
+  );
+}
+
 let pending = "";
 function toLog(text) {
   const lines = (pending + text).split("\n");
   pending = lines.pop() ?? "";
-  for (const line of lines) log.write(stripVTControlCharacters(line) + "\n");
+  for (const line of lines) log.write(forLog(line) + "\n");
 }
 
 for (const [from, to] of [
@@ -67,7 +77,7 @@ for (const signal of ["SIGTERM", "SIGHUP"]) {
 }
 
 child.on("exit", (code, signal) => {
-  if (pending) log.write(stripVTControlCharacters(pending) + "\n");
+  if (pending) log.write(forLog(pending) + "\n");
   // A shell reports death by signal N as exit code 128 + N.
   log.end(() =>
     process.exit(signal ? 128 + constants.signals[signal] : (code ?? 1))
