@@ -2,10 +2,10 @@
 // Frankfurter v2 on Potluck's server: the browser never talks to the rate
 // source, and only someone holding the group link can trigger a lookup.
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { findCurrency } from "../currency/currencies";
 import { rateLookups } from "../db/schema";
 import type { Db } from "../db/types";
-import { isCalendarDate, readGroupCurrency } from "./service";
+import { checkForeignCurrency, isCalendarDate } from "./checks";
+import { readGroupCurrency } from "./service";
 
 /** A rate published more than this many days before the entry's date is unavailable. */
 const STALE_AFTER_DAYS = 30;
@@ -57,10 +57,8 @@ export async function lookUpRate(
 > {
   const groupCurrency = await readGroupCurrency(db, linkToken);
   if (groupCurrency === undefined) return refuse("group-unknown");
-  if (!findCurrency(foreignCurrency)) return refuse("foreign-currency-unknown");
-  if (foreignCurrency === groupCurrency) {
-    return refuse("foreign-currency-is-group-currency");
-  }
+  const currency = checkForeignCurrency(foreignCurrency, groupCurrency);
+  if (typeof currency === "string") return refuse(currency);
   if (!isCalendarDate(date)) return refuse("date-unreadable");
 
   const at = now();

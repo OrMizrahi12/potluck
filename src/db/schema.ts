@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -62,6 +63,18 @@ export const members = pgTable(
   ]
 );
 
+/**
+ * The check that an entry's foreign part is whole or absent. Spelled out
+ * with IS NOT NULL: a check whose test is NULL passes.
+ */
+function foreignPartWhole(t: {
+  foreignAmount: AnyPgColumn;
+  foreignCurrency: AnyPgColumn;
+  exchangeRate: AnyPgColumn;
+}) {
+  return sql`(${t.foreignAmount} IS NULL AND ${t.foreignCurrency} IS NULL AND ${t.exchangeRate} IS NULL) OR (${t.foreignAmount} IS NOT NULL AND ${t.foreignCurrency} IS NOT NULL AND ${t.exchangeRate} IS NOT NULL AND ${t.foreignAmount} > 0 AND ${t.exchangeRate} > 0)`;
+}
+
 export const expenses = pgTable(
   "expenses",
   {
@@ -94,12 +107,7 @@ export const expenses = pgTable(
   },
   (t) => [
     check("expenses_amount_positive", sql`${t.amount} > 0`),
-    // A foreign part is whole or absent. Spelled out with IS NOT NULL: a
-    // check whose test is NULL passes.
-    check(
-      "expenses_foreign_part_whole",
-      sql`(${t.foreignAmount} IS NULL AND ${t.foreignCurrency} IS NULL AND ${t.exchangeRate} IS NULL) OR (${t.foreignAmount} IS NOT NULL AND ${t.foreignCurrency} IS NOT NULL AND ${t.exchangeRate} IS NOT NULL AND ${t.foreignAmount} > 0 AND ${t.exchangeRate} > 0)`
-    ),
+    check("expenses_foreign_part_whole", foreignPartWhole(t)),
     // The group page lists expenses newest first.
     index("expenses_group_newest_first").on(
       t.groupId,
@@ -184,11 +192,7 @@ export const settlements = pgTable(
     check("settlements_amount_positive", sql`${t.amount} > 0`),
     // Backstop for the service's refusal of a settlement to oneself.
     check("settlements_from_not_to", sql`${t.fromId} <> ${t.toId}`),
-    // A foreign part is whole or absent, as for an expense.
-    check(
-      "settlements_foreign_part_whole",
-      sql`(${t.foreignAmount} IS NULL AND ${t.foreignCurrency} IS NULL AND ${t.exchangeRate} IS NULL) OR (${t.foreignAmount} IS NOT NULL AND ${t.foreignCurrency} IS NOT NULL AND ${t.exchangeRate} IS NOT NULL AND ${t.foreignAmount} > 0 AND ${t.exchangeRate} > 0)`
-    ),
+    check("settlements_foreign_part_whole", foreignPartWhole(t)),
     // The group page lists settlements newest first.
     index("settlements_group_newest_first").on(
       t.groupId,
