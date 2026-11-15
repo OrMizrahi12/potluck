@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
+import { fnv1a32 } from "../test/fnv1a32";
 import { addExpense, createGroup, editExpense, readGroupView } from "./service";
 
 /** A fresh group in `currency` with members Ana, Ben and Chloé. */
@@ -315,12 +316,3 @@ describe("edit expense refusals", () => {
     expect(await readGroupView(db, other.linkToken)).toEqual(added.view);
   });
 });
-
-// 32-bit FNV-1a, written out independently of the engine (see expenses.test.ts).
-function fnv1a32(text: string): number {
-  let hash = 0x811c9dc5;
-  for (const byte of Buffer.from(text, "ascii")) {
-    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-  }
-  return hash;
-}

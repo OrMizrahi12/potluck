@@ -11,10 +11,16 @@ import {
 import type { Db } from "../db/types";
 import { parseAmount } from "../money/amount";
 import {
+  agreesWithRate,
+  convertForward,
+  type MinorAmount,
+} from "../money/foreign-amount";
+import {
   computeGroupMoney,
   type Share,
   type SuggestedSettlement,
 } from "../money/group-money";
+import { checkForeignCurrency, isCalendarDate } from "./checks";
 import { LIMITS } from "./limits";
 
 // The group service: the one seam the pages call. Every command either
@@ -43,6 +49,22 @@ export type ExpenseView = {
   version: number;
   /** Every participant's share, in member creation order; `extra` marks a leftover unit. */
   shares: Share[];
+  /** Present when the expense was paid in a currency other than the group currency. */
+  foreign?: ForeignPartView;
+};
+
+/**
+ * What an expense or settlement was really paid in. The entry's `amount` is the
+ * group-currency figure this converted to, frozen when it was recorded.
+ */
+export type ForeignPartView = {
+  /** Minor units of `currency`. */
+  amount: number;
+  currency: string;
+  /** `currency`'s ISO 4217 minor-unit digits. */
+  digits: number;
+  /** The exchange rate as a decimal string: group-currency units per unit of `currency`. */
+  rate: string;
 };
 
 export type GroupView = {
@@ -77,6 +99,8 @@ export type SettlementView = {
   /** YYYY-MM-DD. */
   date: string;
   version: number;
+  /** Present when the settlement was paid in a currency other than the group currency. */
+  foreign?: ForeignPartView;
 };
 
 /** How many expenses a group view shows unless asked for more. */
@@ -168,6 +192,24 @@ export async function hasGroup(db: Db, linkToken: string): Promise<boolean> {
   return group !== undefined;
 }
 
+/**
+ * The group currency of the group with this link, or undefined when no group
+ * has it: one indexed lookup, answered without the database for a link
+ * newLinkToken() couldn't have made.
+ */
+export async function readGroupCurrency(
+  db: Db,
+  linkToken: string
+): Promise<string | undefined> {
+  if (!LINK_TOKEN_SHAPE.test(linkToken)) return undefined;
+  const [group] = await db
+    .select({ currency: groups.currency })
+    .from(groups)
+    .where(eq(groups.linkToken, linkToken))
+    .limit(1);
+  return group?.currency;
+}
+
 /** Why an expense's description, amount, date, payer or participants can't be recorded. */
 export type ExpenseRefusal =
   | "description-missing"
@@ -179,19 +221,49 @@ export type ExpenseRefusal =
   | "payer-unknown"
   | "participant-unknown"
   | "participants-only-payer"
-  | "amount-too-small-to-split";
+  | "amount-too-small-to-split"
+  | ForeignPartRefusal
+  | "amount-disagrees-with-rate";
+
+/** Why an entry's foreign amount, its currency or the exchange rate can't be recorded. */
+export type ForeignPartRefusal =
+  | "foreign-currency-unknown"
+  | "foreign-currency-is-group-currency"
+  | "foreign-amount-unreadable"
+  | "foreign-amount-not-positive"
+  | "foreign-amount-too-large"
+  | "exchange-rate-unreadable"
+  | "exchange-rate-not-positive";
 
 export type AddExpenseRefusal =
   "group-unknown" | ExpenseRefusal | "too-many-expenses";
 
 export type AddExpenseInput = {
   description: string;
-  /** As typed, in the group's currency: "12.34", or "1234" for yen. */
+  /**
+   * In the group's currency: as typed ("12.34", or "1234" for yen), or, with
+   * a foreign part, the converted figure the form showed.
+   */
   amount: string;
   /** YYYY-MM-DD. */
   date: string;
   payerId: string;
   participantIds: string[];
+  /**
+   * What was really paid, when not in the group currency. Stored as sent:
+   * the service never looks a rate up. Without it the expense has none, so
+   * an edit that leaves it out clears it.
+   */
+  foreign?: ForeignPartInput;
+};
+
+export type ForeignPartInput = {
+  /** As typed, in `currency`'s minor-unit digits. */
+  amount: string;
+  /** A picker code other than the group currency. */
+  currency: string;
+  /** A decimal string: group-currency units per unit of `currency`. */
+  rate: string;
 };
 
 /**
@@ -350,13 +422,13 @@ async function checkExpense(
   group: { id: string; currency: string },
   input: AddExpenseInput
 ): Promise<
-  | {
+  | ({
       description: string;
       amount: number;
       date: string;
       payerId: string;
       participantIds: string[];
-    }
+    } & StoredForeignPart)
   | ExpenseRefusal
 > {
   const description = cleanName(input.description);
@@ -365,8 +437,17 @@ async function checkExpense(
     return "description-too-long";
   if (!isCalendarDate(input.date)) return "date-unreadable";
 
-  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  const groupDigits = currencyOf(group.currency).digits;
+  const foreign = input.foreign && readForeignPart(input.foreign, group);
+  if (typeof foreign === "string") return foreign;
+  // The v1 checks, on the converted figure when there's a foreign part.
+  const amount = readAmount(input.amount, groupDigits);
   if (typeof amount === "string") return amount;
+  if (
+    foreign &&
+    !agreesWithRate(amount, groupDigits, foreign.paid, foreign.rate)
+  )
+    return "amount-disagrees-with-rate";
 
   const memberIds = await memberIdsOf(tx, group.id);
   if (!memberIds.has(input.payerId)) return "payer-unknown";
@@ -383,7 +464,78 @@ async function checkExpense(
     date: input.date,
     payerId: input.payerId,
     participantIds,
+    ...storedForeignPart(foreign),
   };
+}
+
+/** A foreign part read by readForeignPart, as its columns will hold it. */
+function storedForeignPart(
+  foreign: ForeignPart | undefined
+): StoredForeignPart {
+  return {
+    foreignAmount: foreign?.paid.amount ?? null,
+    foreignCurrency: foreign?.currency ?? null,
+    exchangeRate: foreign?.rate ?? null,
+  };
+}
+
+/** What an entry was really paid: the amount in `currency`, at `rate`. */
+type ForeignPart = { paid: MinorAmount; currency: string; rate: string };
+
+/** An entry's foreign part as its columns hold it: all null, or all set. */
+type StoredForeignPart = {
+  foreignAmount: number | null;
+  foreignCurrency: string | null;
+  exchangeRate: string | null;
+};
+
+/** A foreign part as it was sent, or why it can't be recorded. */
+function readForeignPart(
+  input: ForeignPartInput,
+  group: { currency: string }
+): ForeignPart | ForeignPartRefusal {
+  const currency = checkForeignCurrency(input.currency, group.currency);
+  if (typeof currency === "string") return currency;
+
+  const amount = parseAmount(input.amount, currency.digits);
+  if (amount === undefined) return "foreign-amount-unreadable";
+  if (amount <= 0) return "foreign-amount-not-positive";
+  // More than parseAmount's 12 whole digits. There's no cap in major units:
+  // the cap applies to the converted figure.
+  if (amount === Infinity) return "foreign-amount-too-large";
+
+  const rate = checkExchangeRate(input.rate);
+  if (typeof rate !== "string") return rate.refusal;
+
+  return {
+    paid: { amount, digits: currency.digits },
+    currency: currency.code,
+    rate,
+  };
+}
+
+/** The most digits a typed exchange rate may have, whole and fraction together. */
+const RATE_DIGITS = 30;
+
+/**
+ * A typed exchange rate as a plain decimal string ("01.50" is "1.50"), or why
+ * it isn't one. Any rate more than zero is accepted, however extreme.
+ */
+function checkExchangeRate(
+  text: string
+):
+  | string
+  | { refusal: "exchange-rate-unreadable" | "exchange-rate-not-positive" } {
+  const match = /^(-?)(\d*)(?:\.(\d*))?$/.exec(text.trim());
+  if (!match) return { refusal: "exchange-rate-unreadable" };
+  const [, minus, whole, fraction = ""] = match;
+  const digits = whole + fraction;
+  if (digits === "" || digits.length > RATE_DIGITS)
+    return { refusal: "exchange-rate-unreadable" };
+  if (minus || /^0+$/.test(digits))
+    return { refusal: "exchange-rate-not-positive" };
+  const plainWhole = whole.replace(/^0+/, "") || "0";
+  return fraction === "" ? plainWhole : `${plainWhole}.${fraction}`;
 }
 
 async function memberIdsOf(tx: Tx, groupId: string): Promise<Set<string>> {
@@ -402,7 +554,10 @@ export type SettlementRefusal =
   | "date-unreadable"
   | "from-unknown"
   | "to-unknown"
-  | "settlement-to-self";
+  | "settlement-to-self"
+  | ForeignPartRefusal
+  | "amount-disagrees-with-rate"
+  | "foreign-amount-converts-to-zero";
 
 export type AddSettlementRefusal =
   "group-unknown" | SettlementRefusal | "too-many-settlements";
@@ -412,10 +567,19 @@ export type AddSettlementInput = {
   fromId: string;
   /** The member who was paid. */
   toId: string;
-  /** As typed, in the group's currency. */
+  /**
+   * In the group's currency: as typed, or, with a foreign part, the
+   * converted figure the form showed.
+   */
   amount: string;
   /** YYYY-MM-DD. */
   date: string;
+  /**
+   * What was really paid, when not in the group currency, under the same
+   * rules as an expense's. Without it the settlement has none, so an edit
+   * that leaves it out clears it.
+   */
+  foreign?: ForeignPartInput;
 };
 
 /**
@@ -526,14 +690,31 @@ async function checkSettlement(
   group: { id: string; currency: string },
   input: AddSettlementInput
 ): Promise<
-  | { fromId: string; toId: string; amount: number; date: string }
+  | ({
+      fromId: string;
+      toId: string;
+      amount: number;
+      date: string;
+    } & StoredForeignPart)
   | SettlementRefusal
 > {
   if (input.fromId === input.toId) return "settlement-to-self";
   if (!isCalendarDate(input.date)) return "date-unreadable";
 
-  const amount = readAmount(input.amount, currencyOf(group.currency).digits);
+  const groupDigits = currencyOf(group.currency).digits;
+  const foreign = input.foreign && readForeignPart(input.foreign, group);
+  if (typeof foreign === "string") return foreign;
+  // Named for what it is, rather than as an amount of zero nobody typed.
+  if (foreign && convertForward(foreign.paid, foreign.rate, groupDigits) === 0)
+    return "foreign-amount-converts-to-zero";
+  // The v1 checks, on the converted figure when there's a foreign part.
+  const amount = readAmount(input.amount, groupDigits);
   if (typeof amount === "string") return amount;
+  if (
+    foreign &&
+    !agreesWithRate(amount, groupDigits, foreign.paid, foreign.rate)
+  )
+    return "amount-disagrees-with-rate";
 
   const memberIds = await memberIdsOf(tx, group.id);
   if (!memberIds.has(input.fromId)) return "from-unknown";
@@ -544,6 +725,7 @@ async function checkSettlement(
     toId: input.toId,
     amount,
     date: input.date,
+    ...storedForeignPart(foreign),
   };
 }
 
@@ -882,6 +1064,7 @@ export async function readGroupView(
       date: expenses.date,
       payerId: expenses.payerId,
       version: expenses.version,
+      foreignPart: foreignPartColumns(expenses),
     })
     .from(expenses)
     .where(eq(expenses.groupId, group.id))
@@ -909,6 +1092,7 @@ export async function readGroupView(
       amount: settlements.amount,
       date: settlements.date,
       version: settlements.version,
+      foreignPart: foreignPartColumns(settlements),
     })
     .from(settlements)
     .where(eq(settlements.groupId, group.id))
@@ -949,13 +1133,55 @@ export async function readGroupView(
       balance: balanceById.get(m.id) ?? 0,
       referenced: referencedIds.has(m.id),
     })),
-    expenses: expenseRows.slice(0, expenseLimit).map((e) => ({
-      ...e,
-      shares: money.shares.get(e.id) ?? [],
-    })),
+    expenses: expenseRows
+      .slice(0, expenseLimit)
+      .map(({ foreignPart, ...e }) => ({
+        ...e,
+        shares: money.shares.get(e.id) ?? [],
+        ...foreignPartView(foreignPart),
+      })),
     hasOlderExpenses: expenseRows.length > expenseLimit,
-    settlements: settlementRows,
+    settlements: settlementRows.map(({ foreignPart, ...s }) => ({
+      ...s,
+      ...foreignPartView(foreignPart),
+    })),
     suggestedSettlements: money.suggestedSettlements,
+  };
+}
+
+/** An entry's foreign part columns, selected together as a StoredForeignPart. */
+function foreignPartColumns(table: typeof expenses | typeof settlements) {
+  return {
+    foreignAmount: table.foreignAmount,
+    foreignCurrency: table.foreignCurrency,
+    exchangeRate: table.exchangeRate,
+  };
+}
+
+/** An entry's `foreign` field, or no field when it has no foreign part. */
+function foreignPartView({
+  foreignAmount,
+  foreignCurrency,
+  exchangeRate,
+}: StoredForeignPart): { foreign?: ForeignPartView } {
+  if (
+    foreignAmount === null ||
+    foreignCurrency === null ||
+    exchangeRate === null
+  )
+    return {};
+  const currency = findCurrency(foreignCurrency);
+  if (!currency)
+    throw new Error(
+      `Foreign amount in a currency outside the table: ${foreignCurrency}`
+    );
+  return {
+    foreign: {
+      amount: foreignAmount,
+      currency: currency.code,
+      digits: currency.digits,
+      rate: exchangeRate,
+    },
   };
 }
 
@@ -987,20 +1213,6 @@ function readAmount(
   if (amount > LIMITS.amountMajorUnits * 10 ** digits)
     return "amount-too-large";
   return amount;
-}
-
-/** Whether text is a real calendar date written YYYY-MM-DD. */
-function isCalendarDate(text: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    year >= 1 &&
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
 }
 
 function refuse<Reason extends string>(

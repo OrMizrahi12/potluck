@@ -304,3 +304,38 @@ a.button.secondary {
 .prompt h3 {
   margin: 0;
 }
+
+/* The currency picker sits beside the amount; it shows its code and clips the name. */
+.amount-row > .currency-picker {
+  flex: none;
+  width: 7.5rem;
+}
+
+.quiet-line {
+  overflow-wrap: anywhere;
+}
+
+/* The rate lookup's buttons sit at the start of the line, not stretched. */
+.rate-button {
+  align-self: flex-start;
+}
+
+.lookup-note:empty {
+  display: none;
+}
+
+.lookup-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* A button inside a line of text, such as "Use this rate", reads as a link. */
+.link-button {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+}

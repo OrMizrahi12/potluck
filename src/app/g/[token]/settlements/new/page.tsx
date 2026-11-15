@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { minorToDecimal, parseAmount } from "@/money/amount";
+import { visitorLocale } from "../../../../locale";
 import { addSettlementAction } from "./actions";
 import { SettlementForm } from "../settlement-form";
 
@@ -27,7 +28,10 @@ async function NewSettlement({
   token: string;
   query: Query;
 }) {
-  const group = await readGroupView(getDb(), token, { expenseLimit: 0 });
+  const [group, locale] = await Promise.all([
+    readGroupView(getDb(), token, { expenseLimit: 0 }),
+    visitorLocale(),
+  ]);
   if (!group) notFound();
 
   // A suggested settlement links here with from, to and amount in minor units.
@@ -59,10 +63,13 @@ async function NewSettlement({
         // afresh instead of keeping the last one's state.
         key={`${initial.fromId}/${initial.toId}/${initial.amount}`}
         action={addSettlementAction.bind(null, token)}
+        token={token}
         currency={group.currency}
         digits={group.digits}
+        locale={locale}
         members={group.members.map(({ id, name }) => ({ id, name }))}
         initial={initial}
+        suggested={amount !== ""}
       />
     </>
   );

@@ -4,9 +4,10 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
 // Words GLOSSARY.md lists under _Avoid_, read from the glossary so it stays the
-// single source. Only one-word entries; a qualified entry like "Split (as a
-// noun)" is left to review, since a name can't show which sense it means.
-const avoidWords = readFileSync(
+// single source. Plain entries of one word or several ("base currency"); a
+// qualified entry like "Split (as a noun)" is left to review, since a name
+// can't show which sense it means.
+const avoidEntries = readFileSync(
   new URL("./GLOSSARY.md", import.meta.url),
   "utf8"
 )
@@ -14,16 +15,23 @@ const avoidWords = readFileSync(
   .filter((line) => line.startsWith("_Avoid_:"))
   .flatMap((line) => line.slice("_Avoid_:".length).split(","))
   .map((entry) => entry.trim().toLowerCase())
-  .filter((word) => /^[a-z]+$/.test(word));
+  .filter((entry) => /^[a-z]+( [a-z]+)*$/.test(entry))
+  .map((entry) => entry.split(" "));
 
 const cap = (word) => word[0].toUpperCase() + word.slice(1);
-// A word as one part of a camelCase or SCREAMING_CASE name, plural allowed:
-// `net`, `netBalance` and `NET_TOTAL` match; `network` and `planet` don't.
+const camel = avoidEntries.map(
+  ([first, ...rest]) => first + rest.map(cap).join("")
+);
+const pascal = avoidEntries.map((words) => words.map(cap).join(""));
+const screaming = avoidEntries.map((words) => words.join("_").toUpperCase());
+// An entry as one part of a camelCase, PascalCase or SCREAMING_CASE name,
+// plural allowed: `net`, `netBalance`, `baseCurrency` and `NET_TOTAL` match;
+// `network` and `planet` don't.
 const inName =
-  `(?<![A-Za-z])(?:${avoidWords.join("|")})s?(?![a-z])` +
-  `|(?:${avoidWords.map(cap).join("|")})s?(?![a-z])` +
-  `|(?<![A-Z])(?:${avoidWords.join("|").toUpperCase()})S?(?![A-Z])`;
-const inProse = `\\b(?:${avoidWords.join("|")})s?\\b`;
+  `(?<![A-Za-z])(?:${camel.join("|")})s?(?![a-z])` +
+  `|(?:${pascal.join("|")})s?(?![a-z])` +
+  `|(?<![A-Z])(?:${screaming.join("|")})S?(?![A-Z])`;
+const inProse = `\\b(?:${avoidEntries.map((words) => words.join("\\s+")).join("|")})s?\\b`;
 
 const declaredName = [
   "VariableDeclarator > Identifier.id",

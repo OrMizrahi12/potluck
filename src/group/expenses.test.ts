@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { expenseParticipants, expenses, groups } from "../db/schema";
 import type { Db } from "../db/types";
 import { createTestDb } from "../test/db";
+import { fnv1a32 } from "../test/fnv1a32";
 import {
   addExpense,
   createGroup,
@@ -19,16 +20,6 @@ async function lisbonGroup(db: Db, currency = "EUR") {
   if (!created.ok) throw new Error(created.reason);
   const [ana, ben, chloe] = created.view.members.map((m) => m.id);
   return { linkToken: created.view.linkToken, ana, ben, chloe };
-}
-
-// 32-bit FNV-1a, written out independently of the engine so the odd-cent
-// rule can be checked against the random ids the service assigns.
-function fnv1a32(text: string): number {
-  let hash = 0x811c9dc5;
-  for (const byte of Buffer.from(text, "ascii")) {
-    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
-  }
-  return hash;
 }
 
 describe("fnv1a32 in these tests", () => {

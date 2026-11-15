@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
 import { minorToDecimal } from "@/money/amount";
+import { visitorLocale } from "../../../../locale";
 import { DeleteEntry } from "../../delete-entry";
 import { MissingEntry } from "../../missing-entry";
 import { SettlementForm } from "../settlement-form";
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 };
 
 async function EditSettlement({ token, id }: { token: string; id: string }) {
-  const group = await readGroupView(getDb(), token, { expenseLimit: 0 });
+  const [group, locale] = await Promise.all([
+    readGroupView(getDb(), token, { expenseLimit: 0 }),
+    visitorLocale(),
+  ]);
   const settlement = group?.settlements.find((s) => s.id === id);
   if (!group) notFound();
   if (!settlement)
@@ -36,14 +40,24 @@ async function EditSettlement({ token, id }: { token: string; id: string }) {
       <SettlementForm
         key={`edit-${settlement.version}`}
         action={editSettlementAction.bind(null, token, id, settlement.version)}
+        token={token}
         currency={group.currency}
         digits={group.digits}
+        locale={locale}
         members={group.members.map(({ id, name }) => ({ id, name }))}
         initial={{
           fromId: settlement.fromId,
           toId: settlement.toId,
           amount: minorToDecimal(settlement.amount, group.digits),
           date: settlement.date,
+          foreign: settlement.foreign && {
+            amount: minorToDecimal(
+              settlement.foreign.amount,
+              settlement.foreign.digits
+            ),
+            currency: settlement.foreign.currency,
+            rate: settlement.foreign.rate,
+          },
         }}
         editing
       />

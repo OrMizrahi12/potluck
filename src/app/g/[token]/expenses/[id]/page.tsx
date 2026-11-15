@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { LIMITS } from "@/group/limits";
 import { readGroupView } from "@/group/service";
+import { visitorLocale } from "../../../../locale";
 import { minorToDecimal } from "@/money/amount";
 import { DeleteEntry } from "../../delete-entry";
 import { MissingEntry } from "../../missing-entry";
@@ -20,9 +21,10 @@ export const metadata: Metadata = {
 async function EditExpense({ token, id }: { token: string; id: string }) {
   // Balances already read every expense, so asking for all of them finds
   // this one without a second kind of read.
-  const group = await readGroupView(getDb(), token, {
-    expenseLimit: LIMITS.expenses,
-  });
+  const [group, locale] = await Promise.all([
+    readGroupView(getDb(), token, { expenseLimit: LIMITS.expenses }),
+    visitorLocale(),
+  ]);
   const expense = group?.expenses.find((e) => e.id === id);
   if (!group) notFound();
   if (!expense)
@@ -44,6 +46,7 @@ async function EditExpense({ token, id }: { token: string; id: string }) {
         token={token}
         currency={group.currency}
         digits={group.digits}
+        locale={locale}
         members={group.members.map(({ id, name, active }) => ({
           id,
           name,
@@ -55,6 +58,14 @@ async function EditExpense({ token, id }: { token: string; id: string }) {
           date: expense.date,
           payerId: expense.payerId,
           participantIds: expense.shares.map((s) => s.memberId),
+          foreign: expense.foreign && {
+            amount: minorToDecimal(
+              expense.foreign.amount,
+              expense.foreign.digits
+            ),
+            currency: expense.foreign.currency,
+            rate: expense.foreign.rate,
+          },
         }}
       />
       <h2>Delete</h2>

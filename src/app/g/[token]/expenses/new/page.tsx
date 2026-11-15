@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { getDb } from "@/db/client";
 import { readGroupView } from "@/group/service";
+import { visitorLocale } from "../../../../locale";
 import { addExpenseAction } from "./actions";
 import { ExpenseForm } from "../expense-form";
 
@@ -14,7 +15,10 @@ export const metadata: Metadata = {
 };
 
 async function NewExpense({ token }: { token: string }) {
-  const group = await readGroupView(getDb(), token, { expenseLimit: 0 });
+  const [group, locale] = await Promise.all([
+    readGroupView(getDb(), token, { expenseLimit: 0 }),
+    visitorLocale(),
+  ]);
   if (!group) notFound();
 
   return (
@@ -28,6 +32,7 @@ async function NewExpense({ token }: { token: string }) {
         token={token}
         currency={group.currency}
         digits={group.digits}
+        locale={locale}
         members={group.members.map(({ id, name, active }) => ({
           id,
           name,

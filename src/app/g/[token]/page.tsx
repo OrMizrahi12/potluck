@@ -10,6 +10,7 @@ import {
   readGroupView,
   type GroupView,
 } from "@/group/service";
+import { formatRate } from "@/money/foreign-amount";
 import { formatAmount, formatDate } from "@/money/format";
 import { visitorLocale } from "../../locale";
 import { GroupLink } from "./group-link";
@@ -117,6 +118,7 @@ async function Group({ token, shown }: { token: string; shown: number }) {
               money={money}
               locale={locale}
               editHref={`/g/${token}/expenses/${expense.id}`}
+              groupCurrency={group.currency}
             />
           ))}
         </ul>
@@ -142,6 +144,14 @@ async function Group({ token, shown }: { token: string; shown: number }) {
                 <span className="name">{nameOf.get(s.fromId)}</span> paid{" "}
                 <span className="name">{nameOf.get(s.toId)}</span>{" "}
                 <span className="amount">{money(s.amount)}</span>
+                {s.foreign && (
+                  <>
+                    {" "}
+                    <span className="muted">
+                      ({formatAmount(s.foreign.amount, s.foreign, locale)})
+                    </span>
+                  </>
+                )}
               </span>{" "}
               <span className="muted">{formatDate(s.date, locale)}</span>{" "}
               <Link
@@ -179,13 +189,16 @@ function Expense({
   money,
   locale,
   editHref,
+  groupCurrency,
 }: {
   expense: GroupView["expenses"][number];
   nameOf: Map<string, string>;
   money: (minor: number) => string;
   locale: string;
   editHref: string;
+  groupCurrency: string;
 }) {
+  const { foreign } = expense;
   return (
     <li aria-label={expense.description}>
       <div className="expense-head">
@@ -193,6 +206,13 @@ function Expense({
         <span className="amount">{money(expense.amount)}</span>
       </div>
       <p className="muted">
+        {foreign && (
+          <>
+            Paid {formatAmount(foreign.amount, foreign, locale)} at 1{" "}
+            {foreign.currency} = {formatRate(foreign.rate)} {groupCurrency}{" "}
+            ·{" "}
+          </>
+        )}
         Paid by {nameOf.get(expense.payerId)} ·{" "}
         {formatDate(expense.date, locale)} ·{" "}
         <Link href={editHref} aria-label={`Edit ${expense.description}`}>
