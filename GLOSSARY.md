@@ -5,8 +5,12 @@ Potluck tracks money shared within a group: who paid for what, and what each mem
 ## People
 
 **Group**:
-A set of members who share expenses in one currency.
+A set of members who share expenses, keeping their balances in one group currency.
 _Avoid_: Party, event, trip, household
+
+**Group currency**:
+The one currency a group's balances, shares and settlements are in.
+_Avoid_: Base currency, home currency, default currency
 
 **Group link**:
 The address that opens one group; anyone who has it can open the group, and it is the only way in.
@@ -49,6 +53,14 @@ _Avoid_: Payment, repayment, transfer
 **Suggested settlement**:
 A settlement Potluck proposes that nobody has recorded yet.
 _Avoid_: Transfer, repayment, who owes whom
+
+**Foreign amount**:
+An expense's or settlement's amount as paid, in a currency other than the group currency.
+_Avoid_: Original amount, source amount
+
+**Exchange rate**:
+How many units of the group currency one unit of a foreign amount's currency was worth, for the expense or settlement it belongs to.
+_Avoid_: Conversion rate, FX rate
 
 **Settled up**:
 The state of a member whose balance is zero.
