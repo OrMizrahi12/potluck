@@ -1,8 +1,8 @@
 // `npm run dev`: runs `next dev` and copies everything it prints, stdout and
 // stderr, to .data/logs/dev-latest.log, so agents can read what the developer's
 // own terminal shows. The terminal keeps its colours; the log is plain text.
-// The log masks group tokens: a group's link is its only access control, so
-// every path under /g/ is written as /g/<token>; the terminal shows them whole.
+// The log masks group tokens (scripts/clean-log-line.mjs), in paths under /g/
+// and in server-function calls; the terminal shows them whole.
 // Each run starts the log afresh. It serves on the PORT in .env.local, which a
 // worktree gets from `npm run setup:worktree`, else on 3000; --port overrides.
 import { spawn } from "node:child_process";
@@ -15,7 +15,8 @@ import {
 import { createRequire } from "node:module";
 import { constants } from "node:os";
 import path from "node:path";
-import { parseEnv, stripVTControlCharacters } from "node:util";
+import { parseEnv } from "node:util";
+import { cleanLogLine } from "./clean-log-line.mjs";
 
 const root = path.join(import.meta.dirname, "..");
 const logDir = path.join(root, ".data", "logs");
@@ -45,13 +46,6 @@ const child = spawn(
 
 // Clean the log per whole line, so a colour code or a token split across
 // chunks can't leak into it.
-function cleanLogLine(line) {
-  return stripVTControlCharacters(line).replace(
-    /\/g\/[^\s?#/]+/g,
-    "/g/<token>"
-  );
-}
-
 let pending = "";
 function toLog(text) {
   const lines = (pending + text).split("\n");
