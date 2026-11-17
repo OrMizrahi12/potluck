@@ -40,6 +40,14 @@ jobs:
         env:
           # Claude Code's small-model calls default to Haiku; run them on Opus too.
           ANTHROPIC_DEFAULT_HAIKU_MODEL: claude-opus-5-5
+          # A Bash command past its timeout (2 minutes by default) moves to the
+          # background, and Claude ends its turn to wait. The action stops reading
+          # at that first result, so npm run check and the commit hook never got
+          # their follow-up turn. Keep every command in the foreground, with room
+          # to finish inside the job's 30 minutes.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
+          BASH_DEFAULT_TIMEOUT_MS: "900000"
+          BASH_MAX_TIMEOUT_MS: "900000"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           label_trigger: claude-build
