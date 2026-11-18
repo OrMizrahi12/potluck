@@ -17,8 +17,11 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-// Walking-skeleton table: one row, written by the seed. The home page no
-// longer reads it; it stays because migrations may only add things.
+/**
+ * @deprecated Walking-skeleton table, to be removed: nothing reads or writes
+ * it any more. The definition stays until #75 drops the table, so that a
+ * deploy that doesn't use it is live before the drop lands.
+ */
 export const appInfo = pgTable(
   "app_info",
   {

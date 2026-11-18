@@ -9,7 +9,6 @@ import {
   type GroupView,
 } from "../group/service";
 import { LIMITS } from "../group/limits";
-import { appInfo } from "./schema";
 import type { Db } from "./types";
 
 /**
@@ -35,11 +34,6 @@ export const SEED_LINKS = {
  * land on a different member each time.
  */
 export async function seed(db: Db): Promise<void> {
-  await db
-    .insert(appInfo)
-    .values({ greeting: "Potluck is connected to its database." })
-    .onConflictDoNothing();
-
   await seedFlatShare(db);
   await seedSkiCabin(db);
   await seedYenGroup(db);
