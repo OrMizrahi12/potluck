@@ -7,6 +7,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS_FOLDER } from "./migrations-folder";
 import { migrateAndVerify } from "./migrate";
+import { readJournal } from "./migration-journal";
 import * as schema from "./schema";
 
 function emptyDb() {
@@ -57,9 +58,8 @@ describe("the build's migrate step", () => {
 
   it("passes on a database migrated in order", async () => {
     const db = emptyDb();
-    await migrate(db, {
-      migrationsFolder: migrationsWithout("0006_settlement_foreign_amounts"),
-    });
+    const newest = readJournal().at(-1)!.tag;
+    await migrate(db, { migrationsFolder: migrationsWithout(newest) });
 
     const { result } = await runStep(db, {
       production: false,
