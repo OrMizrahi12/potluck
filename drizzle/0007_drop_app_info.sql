@@ -1,1 +1,1 @@
-DROP TABLE "app_info" CASCADE;
+DROP TABLE "app_info";
