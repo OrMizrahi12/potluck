@@ -6,16 +6,23 @@ import nextTs from "eslint-config-next/typescript";
 // Words GLOSSARY.md lists under _Avoid_, read from the glossary so it stays the
 // single source. Plain entries of one word or several ("base currency"); a
 // qualified entry like "Split (as a noun)" is left to review, since a name
-// can't show which sense it means.
-const avoidEntries = readFileSync(
+// can't show which sense it means. So is an entry that is itself a term
+// ("restore", avoided for a rollback but the word for a restore).
+const glossaryLines = readFileSync(
   new URL("./GLOSSARY.md", import.meta.url),
   "utf8"
-)
-  .split("\n")
+).split("\n");
+const terms = new Set(
+  glossaryLines
+    .map((line) => line.match(/^\*\*(.+)\*\*:/)?.[1].toLowerCase())
+    .filter(Boolean)
+);
+const avoidEntries = glossaryLines
   .filter((line) => line.startsWith("_Avoid_:"))
   .flatMap((line) => line.slice("_Avoid_:".length).split(","))
   .map((entry) => entry.trim().toLowerCase())
   .filter((entry) => /^[a-z]+( [a-z]+)*$/.test(entry))
+  .filter((entry) => !terms.has(entry))
   .map((entry) => entry.split(" "));
 
 const cap = (word) => word[0].toUpperCase() + word.slice(1);
