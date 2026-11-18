@@ -17,20 +17,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * @deprecated Walking-skeleton table, to be removed: nothing reads or writes
- * it any more. The definition stays until #75 drops the table, so that a
- * deploy that doesn't use it is live before the drop lands.
- */
-export const appInfo = pgTable(
-  "app_info",
-  {
-    id: integer("id").primaryKey().default(1),
-    greeting: text("greeting").notNull(),
-  },
-  (t) => [check("app_info_single_row", sql`${t.id} = 1`)]
-);
-
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   // The group's only credential: the random token in its link.
