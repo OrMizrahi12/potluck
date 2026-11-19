@@ -1,11 +1,15 @@
 ---
 name: verify
-description: Check a change in the running Potluck app and commit screenshots a reviewer can see. Use when a change alters what a page shows or does, before its PR opens, or when a PR's Evidence needs screenshots.
+description: Check a change in the running Potluck app and commit screenshots a reviewer can see. Use when a change alters what a page shows or does, before its PR opens, or when a PR's Evidence needs screenshots. Also reads production read-only: what's live, statuses, logs, Sentry.
 ---
 
 # Verify
 
 A change is verified when a browser test walks it in the running app, has gone **red** once and is now green on desktop and phone, and the screenshots it took are committed for the PR. The test is the verification: it stays in `e2e/` as the regression guard.
+
+## Reading production
+
+When the question is what production is doing (after a merge deploys, after an alert, "is production healthy?"), follow [`PRODUCTION.md`](PRODUCTION.md) instead of the steps below. That read is **read-only** and never connects to the production database.
 
 ## 1. Run the app from this worktree
 
