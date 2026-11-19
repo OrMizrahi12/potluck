@@ -1,18 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { guardProductionBuild } from "./build-source";
 
-const SHA = "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39";
-
-/** What Vercel sets for a production build GitHub triggered from `main`. */
-const githubMainBuild = {
-  VERCEL_ENV: "production",
-  VERCEL_GIT_PROVIDER: "github",
-  VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
-  VERCEL_GIT_REPO_SLUG: "potluck",
-  VERCEL_GIT_COMMIT_REF: "main",
-  VERCEL_GIT_COMMIT_SHA: SHA,
-};
-
 describe("the production build's source check", () => {
   it("refuses a production build with no Git variables, as a CLI upload has", () => {
     expect(() =>
@@ -20,71 +8,171 @@ describe("the production build's source check", () => {
     ).toThrow(/provider: \(unset\)/);
   });
 
+  it("refuses a Vercel build whose system variables are switched off", () => {
+    expect(() =>
+      guardProductionBuild({ VERCEL: "1" }, () => undefined)
+    ).toThrow(/environment: \(unset\)/);
+  });
+
+  it("refuses a Vercel build with no environment though its Git variables match main", () => {
+    expect(() =>
+      guardProductionBuild(
+        {
+          VERCEL: "1",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
+    ).toThrow(/environment: \(unset\)/);
+  });
+
   it("passes a GitHub build of main whose checkout HEAD is the reported commit", () => {
     expect(() =>
-      guardProductionBuild(githubMainBuild, () => SHA)
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
     ).not.toThrow();
   });
 
-  it.each([
-    [
-      "another branch, as a promoted preview is",
-      { ...githubMainBuild, VERCEL_GIT_COMMIT_REF: "feature/x" },
-      /branch: feature\/x/,
-    ],
-    [
-      "another repo",
-      { ...githubMainBuild, VERCEL_GIT_REPO_OWNER: "someone-else" },
-      /repo: someone-else\/potluck/,
-    ],
-    [
-      "a provider other than GitHub",
-      { ...githubMainBuild, VERCEL_GIT_PROVIDER: "gitlab" },
-      /provider: gitlab/,
-    ],
-    [
-      "no reported commit",
-      { ...githubMainBuild, VERCEL_GIT_COMMIT_SHA: "" },
-      /commit: \(unset\)/,
-    ],
-  ])("refuses a production build from %s", (_, env, seen) => {
-    expect(() => guardProductionBuild(env, () => SHA)).toThrow(seen);
+  it("refuses a production build of another branch, as a preview released to production is", () => {
+    expect(() =>
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "feature/x",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
+    ).toThrow(/branch: feature\/x/);
+  });
+
+  it("refuses a production build of another repo", () => {
+    expect(() =>
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "someone-else",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
+    ).toThrow(/repo: someone-else\/potluck/);
+  });
+
+  it("refuses a production build from a provider other than GitHub", () => {
+    expect(() =>
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "gitlab",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
+    ).toThrow(/provider: gitlab/);
+  });
+
+  it("refuses a production build that reports an empty commit", () => {
+    expect(() =>
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "",
+        },
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
+      )
+    ).toThrow(/commit: \(unset\)/);
   });
 
   it("refuses a production build whose checkout has no .git, so CLI metadata can't pass it", () => {
     expect(() =>
-      guardProductionBuild(githubMainBuild, () => undefined)
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => undefined
+      )
     ).toThrow(/checkout HEAD: \(no \.git\)/);
   });
 
   it("refuses a production build with neither a reported commit nor a .git", () => {
     expect(() =>
       guardProductionBuild(
-        { ...githubMainBuild, VERCEL_GIT_COMMIT_SHA: undefined },
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+        },
         () => undefined
       )
     ).toThrow(/commit: \(unset\)/);
   });
 
   it("refuses a production build whose checkout HEAD isn't the reported commit", () => {
-    const otherHead = "0000000000000000000000000000000000000001";
     expect(() =>
-      guardProductionBuild(githubMainBuild, () => otherHead)
-    ).toThrow(`checkout HEAD: ${otherHead}`);
+      guardProductionBuild(
+        {
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
+          VERCEL_GIT_COMMIT_REF: "main",
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+        },
+        () => "0000000000000000000000000000000000000001"
+      )
+    ).toThrow("checkout HEAD: 0000000000000000000000000000000000000001");
   });
 
   it("names no connection string in its refusal", () => {
-    const secret = "postgres://owner:hunter2@ep-example.neon.tech/potluck";
     let message = "";
     try {
       guardProductionBuild(
         {
-          ...githubMainBuild,
+          VERCEL_ENV: "production",
+          VERCEL_GIT_PROVIDER: "github",
+          VERCEL_GIT_REPO_OWNER: "OrMizrahi12",
+          VERCEL_GIT_REPO_SLUG: "potluck",
           VERCEL_GIT_COMMIT_REF: "feature/x",
-          DATABASE_URL: secret,
-          DATABASE_URL_UNPOOLED: secret,
+          VERCEL_GIT_COMMIT_SHA: "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39",
+          DATABASE_URL: "postgres://owner:hunter2@ep-example.neon.tech/potluck",
+          DATABASE_URL_UNPOOLED:
+            "postgres://owner:hunter2@ep-example.neon.tech/potluck",
         },
-        () => SHA
+        () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
       );
     } catch (error) {
       message = (error as Error).message;
@@ -95,7 +183,10 @@ describe("the production build's source check", () => {
 
   it("leaves preview builds and local runs alone", () => {
     expect(() =>
-      guardProductionBuild({ VERCEL_ENV: "preview" }, () => undefined)
+      guardProductionBuild(
+        { VERCEL: "1", VERCEL_ENV: "preview" },
+        () => undefined
+      )
     ).not.toThrow();
     expect(() => guardProductionBuild({}, () => undefined)).not.toThrow();
   });
