@@ -108,4 +108,9 @@ test("the privacy page says what's stored and that the link is the key", async (
   await expect(main).toContainText("including deleting it");
   await expect(main).toContainText("The link can't be changed");
   await expect(main).toContainText("A group is kept until someone deletes it");
+  await expect(main).toContainText("Sentry receives errors only");
+  await expect(main).toContainText(
+    "removes group link tokens and IP addresses"
+  );
+  await expect(main).toContainText("30 days, stored in the US");
 });

@@ -54,6 +54,16 @@ export default function PrivacyPage() {
         doesn&apos;t pass a group&apos;s link on to other sites.
       </p>
 
+      <h2>Error reports</h2>
+      <p>
+        When something goes wrong, Potluck sends a report of the error to
+        Sentry, a service that collects errors so they can be fixed. Sentry
+        receives errors only: nothing about pages that work, and no recording of
+        your visit. Before a report leaves, Potluck removes group link tokens
+        and IP addresses from it. Sentry keeps each report for 30 days, stored
+        in the US.
+      </p>
+
       <h2>How long it&apos;s kept</h2>
       <p>
         A group is kept until someone deletes it. Deleting a group removes it
