@@ -223,6 +223,28 @@ describe("smoke test", () => {
     });
   });
 
+  it("fails, saying so, when the address reports no commit", async () => {
+    // What production answered before /api/health named its commit.
+    const baseUrl = await serve(() => ({
+      status: 200,
+      body: JSON.stringify({ status: "ok" }),
+    }));
+
+    const result = await runSmoke({
+      baseUrl,
+      commit: COMMIT,
+      timeoutMs: 50,
+      intervalMs: 10,
+      isNewer: async () => false,
+    });
+
+    expect(result).toMatchObject({
+      passed: false,
+      summary:
+        "Production never reported fa1eade within 0.05s: it reports no commit",
+    });
+  });
+
   it("fails, saying so, when nothing answers at the address", async () => {
     // Bind a port, then close it: nothing answers there.
     const baseUrl = await serve(() => ({ status: 200, body: "" }));

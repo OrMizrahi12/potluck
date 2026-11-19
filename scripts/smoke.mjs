@@ -126,12 +126,16 @@ function describeAnswer(answer) {
 }
 
 /**
+ * The commit a health answer names: null when it names none (as before
+ * /api/health reported one), undefined when it isn't a health answer.
+ *
  * @param {string} body
  * @returns {string | null | undefined}
  */
 function reportedCommit(body) {
   try {
-    return JSON.parse(body).commit;
+    const { commit } = JSON.parse(body);
+    return typeof commit === "string" ? commit : null;
   } catch {
     return undefined;
   }
