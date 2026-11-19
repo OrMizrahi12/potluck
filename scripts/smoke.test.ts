@@ -5,6 +5,7 @@ import { runSmoke } from "./smoke.mjs";
 
 const COMMIT = "fa1eade47b73733d6312d5abfad33ce9e4068081";
 const OLDER_COMMIT = "0b9e2c47d1a6f3e8b5c7a9d2e4f6081a3c5e7b9d";
+const NEWER_COMMIT = "7c1d3e5a9b2f4c6d8e0a1b3c5d7e9f0a2b4c6d8e";
 
 type Answer = { status: number; body: string };
 type Answers = (path: string) => Answer;
@@ -50,6 +51,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 1000,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result.passed).toBe(true);
@@ -81,6 +83,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 1000,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result).toMatchObject({
@@ -109,6 +112,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 100,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result).toMatchObject({
@@ -118,7 +122,35 @@ describe("smoke test", () => {
     });
   });
 
-  it("fails when /api/health doesn't answer within the wait", async () => {
+  it("passes untested, at once, when production has moved on to a later commit", async () => {
+    const pagesAsked: string[] = [];
+    const baseUrl = await serve((path) => {
+      pagesAsked.push(path);
+      if (path === "/api/health")
+        return {
+          status: 200,
+          body: JSON.stringify({ status: "ok", commit: NEWER_COMMIT }),
+        };
+      return { status: 500, body: "" };
+    });
+
+    const result = await runSmoke({
+      baseUrl,
+      commit: COMMIT,
+      // Far longer than the test may run: it must not wait.
+      timeoutMs: 60_000,
+      intervalMs: 10,
+      isNewer: async (seen) => seen === NEWER_COMMIT,
+    });
+
+    expect(result).toMatchObject({
+      passed: true,
+      summary: "Not smoke-tested: production moved on to 7c1d3e5",
+    });
+    expect(pagesAsked).toEqual(["/api/health"]);
+  });
+
+  it("fails when /api/health never reports the commit within the wait", async () => {
     const baseUrl = await serve(() => ({ status: 500, body: "" }));
 
     const result = await runSmoke({
@@ -126,6 +158,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 100,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result).toMatchObject({
@@ -154,6 +187,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 1000,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result).toMatchObject({
@@ -179,6 +213,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 1000,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result).toMatchObject({
@@ -199,6 +234,7 @@ describe("smoke test", () => {
       commit: COMMIT,
       timeoutMs: 50,
       intervalMs: 10,
+      isNewer: async () => false,
     });
 
     expect(result.passed).toBe(false);

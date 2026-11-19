@@ -1,10 +1,12 @@
 name: Smoke test
 
-# After each production deploy succeeds, wait until the production address
-# reports that commit in /api/health, run the read-only smoke test there, and
-# report a "Smoke test" status on the commit (#69). It runs on what's already
-# released: a failure holds nothing back, and a person rolls back
-# (`vercel rollback`).
+# When Vercel says a production build of main succeeded, wait until the
+# production address reports that commit in /api/health, run the read-only
+# smoke test there, and report a "Smoke test" status on the commit (#69).
+# Until a deployment check holds the release back, the smoke test runs on the
+# release itself: a failure holds nothing back, and a person rolls back
+# (`vercel rollback`). A commit a later release replaced before its smoke test
+# ran passes untested, and says so.
 #
 # Needs, outside the repo: repository dispatch events switched on in the Vercel
 # project's Git settings, and the PRODUCTION_URL secret. GitHub only runs a
@@ -17,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       commit:
-        description: Full SHA of the commit production should be serving
+        description: Full SHA of a commit on main that production should report
         required: true
 
 permissions:
@@ -43,7 +45,7 @@ jobs:
       - name: Check the commit
         run: |
           if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Not a full commit SHA: '$COMMIT'"
+            echo "::error::The commit to smoke-test isn't a full commit SHA."
             exit 1
           fi
 
