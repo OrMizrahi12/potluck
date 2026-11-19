@@ -9,9 +9,8 @@ name: Smoke test
 # ran passes untested, and says so.
 #
 # Needs, outside the repo: repository dispatch events switched on in the Vercel
-# project's Git settings, and the PRODUCTION_URL secret. GitHub only runs a
-# repository_dispatch workflow from the default branch, so this starts working
-# once it's on main.
+# project's Git settings. GitHub only runs a repository_dispatch workflow from
+# the default branch, so this starts working once it's on main.
 
 on:
   repository_dispatch:
@@ -69,7 +68,9 @@ jobs:
       - name: Smoke test
         id: smoke
         env:
-          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          # The production address. Changing it is a one-way door
+          # (docs/agents/what-stays-human.md).
+          PRODUCTION_URL: https://potluck-zeta.vercel.app
           SMOKE_COMMIT: ${{ env.COMMIT }}
         run: node scripts/smoke-production.mjs
 

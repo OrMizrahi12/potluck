@@ -2,8 +2,7 @@
 //   PRODUCTION_URL=https://… SMOKE_COMMIT=<sha> node scripts/smoke-production.mjs
 // .github/workflows/smoke.yml runs it after each production build succeeds.
 // It prints one line per step, writes `summary=` to $GITHUB_OUTPUT for the
-// commit status, and exits 1 on a failure. Nothing it prints names the
-// address, which isn't public until the launch.
+// commit status, and exits 1 on a failure.
 //
 // With GITHUB_REPOSITORY and GH_TOKEN set, it asks GitHub whether a commit
 // the address reports instead comes after this one. Without them it never

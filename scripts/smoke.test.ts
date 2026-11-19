@@ -223,7 +223,7 @@ describe("smoke test", () => {
     });
   });
 
-  it("never names the address it ran against", async () => {
+  it("fails, saying so, when nothing answers at the address", async () => {
     // Bind a port, then close it: nothing answers there.
     const baseUrl = await serve(() => ({ status: 200, body: "" }));
     await new Promise((resolve) => server!.close(resolve));
@@ -237,9 +237,10 @@ describe("smoke test", () => {
       isNewer: async () => false,
     });
 
-    expect(result.passed).toBe(false);
-    const host = new URL(baseUrl).host;
-    for (const line of [result.summary, ...result.lines])
-      expect(line).not.toContain(host);
+    expect(result).toMatchObject({
+      passed: false,
+      summary:
+        "Production never reported fa1eade within 0.05s: /api/health didn't answer (ECONNREFUSED)",
+    });
   });
 });

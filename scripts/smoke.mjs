@@ -1,9 +1,7 @@
 // The read-only smoke test for a commit main built (#69). For now it runs
 // after Vercel says the production build succeeded, against the production
 // address once that address reports the commit, so it checks the release
-// rather than holding it back. The address isn't public until the launch, so
-// nothing it returns names it: its lines go into a public Actions log and a
-// commit status.
+// rather than holding it back.
 
 /** A link token no group has: the right shape, never generated. */
 const MADE_UP_TOKEN = "smokeTestNoSuchGroup00";
@@ -117,7 +115,7 @@ function short(sha) {
 }
 
 /**
- * What a page answered, in words that never name the address.
+ * What a page answered, short enough for a commit status.
  *
  * @param {PageAnswer} answer
  */
@@ -155,7 +153,7 @@ async function fetchPage(baseUrl, path) {
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError")
       return { ok: false, reason: "timed out" };
-    // Only the error code: the cause's message names the host and port.
+    // Only the error code, which fits a commit status.
     const code = error instanceof Error ? error.cause?.code : undefined;
     return { ok: false, reason: typeof code === "string" ? code : "no answer" };
   }
