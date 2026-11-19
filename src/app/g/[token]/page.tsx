@@ -14,6 +14,7 @@ import { formatRate } from "@/money/foreign-amount";
 import { formatAmount, formatDate } from "@/money/format";
 import { visitorLocale } from "../../locale";
 import { GroupLink } from "./group-link";
+import { latestActivityDate } from "./latest-activity";
 import { WhoAreYou } from "./who-are-you";
 
 export const metadata: Metadata = {
@@ -40,6 +41,7 @@ async function Group({ token, shown }: { token: string; shown: number }) {
   const currency = findCurrency(group.currency);
   const money = (minor: number) => formatAmount(minor, group, locale);
   const nameOf = new Map(group.members.map((m) => [m.id, m.name]));
+  const latestActivity = latestActivityDate(group);
 
   return (
     <>
@@ -56,8 +58,10 @@ async function Group({ token, shown }: { token: string; shown: number }) {
       />
       <p>
         Currency: {group.currency}
-        {currency && ` · ${currency.name}`} ·{" "}
-        <Link href={`/g/${token}/settings`}>Group settings</Link>
+        {currency && ` · ${currency.name}`}
+        {latestActivity &&
+          ` · Latest activity: ${formatDate(latestActivity, locale)}`}{" "}
+        · <Link href={`/g/${token}/settings`}>Group settings</Link>
       </p>
 
       <div className="actions">
