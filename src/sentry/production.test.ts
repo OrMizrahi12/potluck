@@ -6,8 +6,7 @@ describe("the DSN a build reports errors to", () => {
     expect(
       sentryDsn({
         VERCEL_ENV: "production",
-        NEXT_PUBLIC_SENTRY_DSN:
-          "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
+        SENTRY_DSN: "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
       })
     ).toBe("https://0123456789abcdef@o123.ingest.de.sentry.io/456");
   });
@@ -16,8 +15,7 @@ describe("the DSN a build reports errors to", () => {
     expect(
       sentryDsn({
         VERCEL_ENV: "preview",
-        NEXT_PUBLIC_SENTRY_DSN:
-          "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
+        SENTRY_DSN: "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
       })
     ).toBeUndefined();
   });
@@ -25,15 +23,14 @@ describe("the DSN a build reports errors to", () => {
   it("is none outside Vercel, whatever DSN it has set", () => {
     expect(
       sentryDsn({
-        NEXT_PUBLIC_SENTRY_DSN:
-          "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
+        SENTRY_DSN: "https://0123456789abcdef@o123.ingest.de.sentry.io/456",
       })
     ).toBeUndefined();
   });
 
   it("is none in a production build with no DSN set", () => {
     expect(
-      sentryDsn({ VERCEL_ENV: "production", NEXT_PUBLIC_SENTRY_DSN: "" })
+      sentryDsn({ VERCEL_ENV: "production", SENTRY_DSN: "" })
     ).toBeUndefined();
   });
 });

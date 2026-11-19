@@ -208,7 +208,7 @@ finish() {
 
 VERCEL_CLI="vercel@65.5.0"
 LIVENESS_URL="https://potluck-zeta.vercel.app/api/live"
-SENTRY_KEYS=(NEXT_PUBLIC_SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT)
+SENTRY_KEYS=(SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT)
 
 run_wizard() {
 
@@ -279,7 +279,7 @@ step "Sign in to Sentry if asked and pick the org $SENTRY_ORG_SLUG."
 step "Link Sentry project potluck to Vercel project potluck."
 warn "If it offers automatic uptime monitors, switch that OFF: stage 6 adds the one we want."
 step "Finish the install."
-note "It sets NEXT_PUBLIC_SENTRY_DSN, SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT"
+note "It sets SENTRY_DSN, SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT"
 note "in Vercel. The token belongs to a \"Vercel Internal Integration\" in Sentry's"
 note "Developer Settings: deleting that breaks the integration."
 note "\"Failed to fetch\" during setup is usually an ad blocker."

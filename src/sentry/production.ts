@@ -2,7 +2,7 @@ import type { SentryBuildOptions } from "@sentry/nextjs/config";
 
 type Env = Record<string, string | undefined>;
 
-// Sentry's Vercel integration sets NEXT_PUBLIC_SENTRY_DSN, and SENTRY_AUTH_TOKEN,
+// Sentry's Vercel integration sets SENTRY_DSN, and SENTRY_AUTH_TOKEN,
 // SENTRY_ORG and SENTRY_PROJECT for source maps, possibly in every Vercel
 // environment. Only a production build uses them: a preview or a local run
 // sends nothing to Sentry, whatever it has set.
@@ -18,7 +18,7 @@ function isProductionBuild(env: Env): boolean {
  */
 export function sentryDsn(env: Env): string | undefined {
   if (!isProductionBuild(env)) return undefined;
-  return env.NEXT_PUBLIC_SENTRY_DSN || undefined;
+  return env.SENTRY_DSN || undefined;
 }
 
 /**
