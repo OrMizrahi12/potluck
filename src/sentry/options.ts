@@ -27,10 +27,17 @@ export function reportingOptions(dsn: string) {
 
 /**
  * Default integrations that would send Sentry something besides errors:
- * release-health sessions, and the browser's tracing.
+ * Sentry's sessions, and the browser's tracing.
  */
-export const NOT_ERRORS = new Set([
+const NON_ERROR_INTEGRATIONS = new Set([
   "BrowserSession",
   "BrowserTracing",
   "ProcessSession",
 ]);
+
+/** The default integrations, minus those that send anything but errors. */
+export function errorsOnly<T extends { name: string }>(defaults: T[]): T[] {
+  return defaults.filter(
+    (integration) => !NON_ERROR_INTEGRATIONS.has(integration.name)
+  );
+}

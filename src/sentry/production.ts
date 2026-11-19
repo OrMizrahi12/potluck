@@ -23,7 +23,7 @@ export function sentryDsn(env: Env): string | undefined {
 
 /**
  * `withSentryConfig`'s options. A production build uploads its source maps and
- * creates a release. Any other build does neither and is never handed the auth
+ * creates a Sentry release. Any other build does neither and is never handed the auth
  * token. The plugin never sends Sentry its own telemetry.
  */
 export function sentryBuildOptions(env: Env): SentryBuildOptions {

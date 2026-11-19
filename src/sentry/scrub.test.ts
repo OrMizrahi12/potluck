@@ -54,6 +54,61 @@ describe("an error report", () => {
   });
 });
 
+describe("an error report's stack frames", () => {
+  it("keep the source files under app/g that hold no link token", () => {
+    const files = [
+      "/var/task/src/app/g/group-link-proxy.ts",
+      "app:///_next/server/app/g/no-group/page.js",
+      "app:///_next/static/chunks/app/g/%5Btoken%5D/page-0a1b2c.js",
+      "webpack-internal:///(rsc)/./src/app/g/[token]/page.tsx",
+    ];
+    const scrubbed = scrubErrorReport({
+      type: undefined,
+      exception: {
+        values: [
+          {
+            type: "Error",
+            stacktrace: {
+              frames: files.map((filename) => ({ filename })),
+            },
+          },
+        ],
+      },
+    });
+
+    expect(
+      scrubbed.exception?.values?.[0].stacktrace?.frames?.map(
+        (frame) => frame.filename
+      )
+    ).toEqual(files);
+  });
+
+  it("lose a link token in a page's own address", () => {
+    const scrubbed = scrubErrorReport({
+      type: undefined,
+      exception: {
+        values: [
+          {
+            type: "Error",
+            stacktrace: {
+              frames: [
+                {
+                  filename:
+                    "https://potluck-zeta.vercel.app/g/q7Xk2LmP9vRt4WzYb3NcHd",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(
+      scrubbed.exception?.values?.[0].stacktrace?.frames?.[0].filename
+    ).toBe("https://potluck-zeta.vercel.app/g/[token]");
+  });
+});
+
 describe("a breadcrumb", () => {
   it("names a group link without its link token", () => {
     const scrubbed = scrubBreadcrumb({

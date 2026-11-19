@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
-import { NOT_ERRORS, reportingOptions } from "./sentry/options";
+import { errorsOnly, reportingOptions } from "./sentry/options";
 
 // The server's error reporting. Only a production build has a DSN
 // (src/sentry/production.ts, inlined by next.config.ts); without one, Sentry
@@ -11,8 +11,7 @@ export function register() {
     ...reportingOptions(dsn),
     includeServerName: false,
     integrations: (defaults) =>
-      defaults
-        .filter((integration) => !NOT_ERRORS.has(integration.name))
+      errorsOnly(defaults)
         .filter((integration) => integration.name !== "Http")
         // As @sentry/nextjs sets it up, minus a session per request.
         .concat(

@@ -1,9 +1,14 @@
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
 
 // A group link's link token is its only access, so it never reaches Sentry.
-// Each `/g/<segment>` becomes `/g/[token]`, wherever it appears: URLs,
-// transaction names, messages, breadcrumbs, request data, stack frame values.
-const GROUP_LINK = /\/g\/(?!\[token\])[^/?#\s"'<>]+/g;
+// Each `/g/<segment>` becomes `/g/[token]`, wherever it appears: URLs, route
+// names, messages, breadcrumbs, request data, stack frames. A segment counts
+// when it's made of a link token's characters (base64url), so a mistyped or
+// cut-short link goes too. Left alone, so stack frames still map to source:
+// the app's own segments under app/g (`[token]`, its URL-encoded form,
+// `no-group`) and a file name such as `group-link-proxy.ts`.
+const GROUP_LINK =
+  /\/g\/(?!(?:\[token\]|%5Btoken%5D|no-group)(?![\w-]))[\w-]+(?![\w-]|\.[A-Za-z]{1,4}\b)/g;
 
 function scrubString(text: string): string {
   return text.replace(GROUP_LINK, "/g/[token]");
@@ -26,8 +31,8 @@ function scrubDeep<T>(value: T): T {
 
 /**
  * `beforeSend`, on client and server. Besides the link tokens, it drops what
- * would carry an IP address or a cookie: the user info, and the request's headers
- * and cookies. `dataCollection` already stops the SDK collecting them; this
+ * would carry an IP address or a cookie: the user info, and the request's headers,
+ * cookies and environment. `dataCollection` already stops the SDK collecting them; this
  * still holds if a default changes.
  */
 export function scrubErrorReport(report: ErrorEvent): ErrorEvent {
