@@ -46,7 +46,14 @@ export async function missingMigrations(
   db: Db,
   migrationsFolder = MIGRATIONS_FOLDER
 ): Promise<string[]> {
-  const journal = readJournal(migrationsFolder);
+  return unappliedMigrations(db, readJournal(migrationsFolder));
+}
+
+/** {@link missingMigrations}, for a journal already read. */
+export async function unappliedMigrations(
+  db: Db,
+  journal: JournalEntry[]
+): Promise<string[]> {
   const table = (await db.execute(
     sql`select to_regclass('drizzle.__drizzle_migrations') is not null as "exists"`
   )) as { rows: { exists: boolean }[] };
