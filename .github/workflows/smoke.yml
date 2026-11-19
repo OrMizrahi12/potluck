@@ -82,7 +82,12 @@ jobs:
           SUMMARY: ${{ steps.smoke.outputs.summary }}
         run: |
           if [[ "$OUTCOME" == success ]]; then state=success; else state=failure; fi
-          description="${SUMMARY:-Smoke test didn't finish: see the run}"
+          # The fallback stays outside ${…}: bash reads a quote inside a
+          # double-quoted ${SUMMARY:-…} as the start of a quoted word (#81).
+          description="$SUMMARY"
+          if [[ -z "$description" ]]; then
+            description="Smoke test did not finish: see the run"
+          fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/$COMMIT" \
             -f state="$state" -f context="Smoke test" \
             -f description="$description" \
