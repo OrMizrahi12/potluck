@@ -15,6 +15,8 @@ npm run dev
 
 `GET /api/live` answers without touching the database (Sentry's uptime monitor calls it). `GET /api/health` reports the commit the deploy was built from and whether the database answers, has every migration applied, and how many bytes it holds against Neon Free's 1 GB. It answers 503 when the database doesn't answer or a migration is missing.
 
+Every hour, `.github/workflows/health.yml` calls production's `/api/health`. A failure, a schema that isn't current, or storage at 80% of the limit opens an issue (or comments on the open one) assigned to the repo's owner; a passing check closes it. To force a failure, run the workflow by hand with a bad `url`: `gh workflow run health.yml -f url=https://potluck-no-such-deploy.vercel.app`.
+
 In a git worktree, run `npm run setup:worktree` instead: it installs, gives the worktree its own database (`potluck_<worktree name>`, migrated and seeded) and dev server port (3100 up), and keeps both in its `.env.local`. Claude Code copies `.env.local` in from the main checkout (`.worktreeinclude`).
 
 ## Commands

@@ -119,7 +119,7 @@ function short(sha) {
  *
  * @param {PageAnswer} answer
  */
-function describeAnswer(answer) {
+export function describeAnswer(answer) {
   return answer.ok
     ? `answered HTTP ${answer.status}`
     : `didn't answer (${answer.reason})`;
@@ -146,7 +146,7 @@ function reportedCommit(body) {
  * @param {string} path
  * @returns {Promise<PageAnswer>}
  */
-async function fetchPage(baseUrl, path) {
+export async function fetchPage(baseUrl, path) {
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
