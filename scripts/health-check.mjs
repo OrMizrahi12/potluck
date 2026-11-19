@@ -37,7 +37,7 @@ export async function checkHealth({ baseUrl, retryAfterMs }) {
  */
 async function askOnce(baseUrl) {
   const answer = await fetchPage(baseUrl, "/api/health");
-  const database = answer.ok ? healthReport(answer.body) : undefined;
+  const database = answer.ok ? databaseHealth(answer.body) : undefined;
   if (!database)
     return {
       passed: false,
@@ -72,16 +72,20 @@ function percent(bytes, limitBytes) {
 
 /**
  * The `database` part of a health report, or undefined when the body isn't
- * one (an error page, a paused deployment, the wrong address).
+ * one (an error page, a paused deployment, the wrong address). A reachable
+ * database always reports its storage.
  *
  * @param {string} body
  */
-function healthReport(body) {
+function databaseHealth(body) {
   try {
     const { database } = JSON.parse(body);
     if (
       typeof database?.reachable === "boolean" &&
-      typeof database?.schemaCurrent === "boolean"
+      typeof database?.schemaCurrent === "boolean" &&
+      (!database.reachable ||
+        (typeof database.storage?.bytes === "number" &&
+          typeof database.storage?.limitBytes === "number"))
     )
       return database;
   } catch {

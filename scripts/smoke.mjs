@@ -115,7 +115,8 @@ function short(sha) {
 }
 
 /**
- * What a page answered, short enough for a commit status.
+ * What a page answered, short enough for a commit status or an issue line.
+ * The hourly health check (scripts/health-check.mjs) shares it.
  *
  * @param {PageAnswer} answer
  */

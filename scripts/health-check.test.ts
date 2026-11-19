@@ -27,27 +27,20 @@ async function serve(...answers: Answer[]): Promise<string> {
   return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
 }
 
-function report({
-  reachable = true,
-  schemaCurrent = true,
-  bytes = 50_000_000,
-}: { reachable?: boolean; schemaCurrent?: boolean; bytes?: number } = {}) {
-  return JSON.stringify({
-    status: reachable && schemaCurrent ? "ok" : "failing",
-    commit: "fa1eade47b73733d6312d5abfad33ce9e4068081",
-    database: {
-      reachable,
-      schemaCurrent,
-      storage: reachable ? { bytes, limitBytes: 1_000_000_000 } : null,
-    },
-  });
-}
-
-const healthy = { status: 200, body: report() };
-
 describe("hourly health check", () => {
   it("passes when production answers healthy, and says how much storage it uses", async () => {
-    const baseUrl = await serve(healthy);
+    const baseUrl = await serve({
+      status: 200,
+      body: JSON.stringify({
+        status: "ok",
+        commit: null,
+        database: {
+          reachable: true,
+          schemaCurrent: true,
+          storage: { bytes: 50_000_000, limitBytes: 1_000_000_000 },
+        },
+      }),
+    });
 
     const result = await checkHealth({ baseUrl, retryAfterMs: 10 });
 
@@ -58,7 +51,15 @@ describe("hourly health check", () => {
   it("fails once storage reaches 80% of the plan's limit", async () => {
     const baseUrl = await serve({
       status: 200,
-      body: report({ bytes: 800_000_000 }),
+      body: JSON.stringify({
+        status: "ok",
+        commit: null,
+        database: {
+          reachable: true,
+          schemaCurrent: true,
+          storage: { bytes: 800_000_000, limitBytes: 1_000_000_000 },
+        },
+      }),
     });
 
     const result = await checkHealth({ baseUrl, retryAfterMs: 10 });
@@ -70,7 +71,15 @@ describe("hourly health check", () => {
   it("fails, saying so, when the schema isn't current", async () => {
     const baseUrl = await serve({
       status: 503,
-      body: report({ schemaCurrent: false }),
+      body: JSON.stringify({
+        status: "failing",
+        commit: null,
+        database: {
+          reachable: true,
+          schemaCurrent: false,
+          storage: { bytes: 50_000_000, limitBytes: 1_000_000_000 },
+        },
+      }),
     });
 
     const result = await checkHealth({ baseUrl, retryAfterMs: 10 });
@@ -82,7 +91,11 @@ describe("hourly health check", () => {
   it("fails, saying so, when production can't reach its database", async () => {
     const baseUrl = await serve({
       status: 503,
-      body: report({ reachable: false }),
+      body: JSON.stringify({
+        status: "failing",
+        commit: null,
+        database: { reachable: false, schemaCurrent: false, storage: null },
+      }),
     });
 
     const result = await checkHealth({ baseUrl, retryAfterMs: 10 });
@@ -103,8 +116,24 @@ describe("hourly health check", () => {
     expect(result.summary).toContain("HTTP 503");
   });
 
+  it("fails, saying what came back, when a reachable database reports no storage", async () => {
+    const baseUrl = await serve({
+      status: 200,
+      body: JSON.stringify({
+        status: "ok",
+        commit: null,
+        database: { reachable: true, schemaCurrent: true, storage: null },
+      }),
+    });
+
+    const result = await checkHealth({ baseUrl, retryAfterMs: 10 });
+
+    expect(result.passed).toBe(false);
+    expect(result.summary).toContain("HTTP 200");
+  });
+
   it("fails, saying so, when nothing answers at the address", async () => {
-    const baseUrl = await serve(healthy);
+    const baseUrl = await serve({ status: 200, body: "" });
     await new Promise((resolve) => server!.close(resolve));
     server = undefined;
 
@@ -116,8 +145,26 @@ describe("hourly health check", () => {
 
   it("passes when a failure clears on the second ask", async () => {
     const baseUrl = await serve(
-      { status: 503, body: report({ reachable: false }) },
-      healthy
+      {
+        status: 503,
+        body: JSON.stringify({
+          status: "failing",
+          commit: null,
+          database: { reachable: false, schemaCurrent: false, storage: null },
+        }),
+      },
+      {
+        status: 200,
+        body: JSON.stringify({
+          status: "ok",
+          commit: null,
+          database: {
+            reachable: true,
+            schemaCurrent: true,
+            storage: { bytes: 50_000_000, limitBytes: 1_000_000_000 },
+          },
+        }),
+      }
     );
 
     const result = await checkHealth({ baseUrl, retryAfterMs: 10 });

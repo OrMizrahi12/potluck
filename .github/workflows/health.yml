@@ -7,7 +7,8 @@ name: Health check
 # answer is asked again after 30 seconds before it counts.
 #
 # Run it by hand with a `url` to check another address, e.g. a bad one to
-# force a failure. Its result opens, updates or closes the same issue.
+# force a failure: a failure there opens or updates the same issue, but only a
+# pass at the production address closes it.
 #
 # GitHub only runs a schedule from the default branch, may drop or delay a
 # scheduled run, and switches the schedule off after 60 days without repo
@@ -38,6 +39,7 @@ jobs:
       # The production address. Changing it is a one-way door
       # (docs/agents/what-stays-human.md). The input reaches the shell only
       # through the environment, never spliced into a script.
+      PRODUCTION_URL: https://potluck-zeta.vercel.app
       HEALTH_URL: ${{ inputs.url || 'https://potluck-zeta.vercel.app' }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       GH_TOKEN: ${{ github.token }}
@@ -69,12 +71,16 @@ jobs:
           if [[ -z "$summary" ]]; then
             summary="The health check did not finish: see the run"
           fi
+          # Matched here, not with --author: gh's author filter doesn't
+          # reliably match the Actions bot, which gh names app/github-actions.
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-            --author "app/github-actions" --limit 100 --json number,title \
-            --jq '.[] | select(.title == env.ISSUE_TITLE) | .number' | head -n 1)
+            --limit 500 --json number,title,author \
+            --jq '.[] | select(.title == env.ISSUE_TITLE and .author.login == "app/github-actions") | .number' \
+            | head -n 1)
 
           if [[ "$OUTCOME" == success ]]; then
-            if [[ -n "$number" ]]; then
+            # A pass elsewhere says nothing about production.
+            if [[ -n "$number" && "${HEALTH_URL%/}" == "$PRODUCTION_URL" ]]; then
               gh issue close "$number" --repo "$GITHUB_REPOSITORY" \
                 --comment "Passing again at $HEALTH_URL: $summary ([run]($RUN_URL))"
             fi
