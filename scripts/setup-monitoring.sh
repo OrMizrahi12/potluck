@@ -201,10 +201,10 @@ finish() {
 # Wires production to Sentry (#67): the Potluck project in the existing Sentry
 # org, Sentry's Vercel integration (it puts the DSN and the build token into
 # Vercel, so nobody copies a key), and an uptime monitor on the liveness route.
-# Run from the repo root of a checkout linked to Vercel:
+# Run from the repo root, signed in to the Vercel CLI (no link needed):
 #   scripts/setup-monitoring.sh
-# It writes nothing to .env.local or GitHub, and prints no variable's value:
-# stage 5 lists Vercel's Sentry variables by name and target only.
+# It writes nothing to .env.local, .vercel/ or GitHub, and prints no variable's
+# value: stage 5 lists Vercel's Sentry variables by name and target only.
 
 VERCEL_CLI="vercel@65.5.0"
 LIVENESS_URL="https://potluck-zeta.vercel.app/api/live"
@@ -289,15 +289,12 @@ pause "Press Enter once the integration shows as installed."
 stage "Vercel: list the Sentry variables, names and targets only"
 say "Nothing is deleted: previews send nothing (#66), and the token reaching"
 say "previews waits for the secrets work."
-if [[ ! -f .vercel/project.json ]]; then
-  say "This folder isn't linked to Vercel yet. Signing in may open your browser."
-  npx --yes "$VERCEL_CLI" link --yes --project potluck
-fi
-# `env ls --json` includes readable values, so jq reads only the key, target and
-# git branch, straight from the pipe. jq's own errors can quote its input, so
-# they're dropped.
+# Read through Vercel's API, not `vercel link` (which can pull development
+# variables into a file). The response can carry values, so jq reads only the
+# key, target and git branch, straight from the pipe. jq's own errors can quote
+# its input, so they're dropped.
 listing=""
-if ! listing=$(npx --yes "$VERCEL_CLI" env ls --json 2>/dev/null \
+if ! listing=$(npx --yes "$VERCEL_CLI" api /v9/projects/potluck/env 2>/dev/null \
     | jq -r '(.envs // .)[]
              | select(.key | test("SENTRY"))
              | [.key,
@@ -307,7 +304,7 @@ if ! listing=$(npx --yes "$VERCEL_CLI" env ls --json 2>/dev/null \
   listing=""
 fi
 if [[ -z "$listing" ]]; then
-  warn "Couldn't list them. Check signing in: npx $VERCEL_CLI whoami"
+  warn "Couldn't list them. Sign in with: npx $VERCEL_CLI login, then re-run."
   SKIPPED+=("list Vercel's Sentry variables (names and targets, never values)")
 else
   printf '\n  %s%-24s %-34s %s%s\n' "$BOLD" "NAME" "TARGETS" "GIT BRANCH" "$RESET"
