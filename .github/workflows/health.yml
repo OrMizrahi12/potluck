@@ -1,0 +1,100 @@
+name: Health check
+
+# Every hour, ask production's /api/health whether the database answers, has
+# every migration applied, and holds under 80% of Neon Free's 1 GB (#68).
+# A failure opens an issue assigned to the repo's owner, so GitHub emails
+# them, or comments on the one already open; a pass closes it. A failing
+# answer is asked again after 30 seconds before it counts.
+#
+# Run it by hand with a `url` to check another address, e.g. a bad one to
+# force a failure: a failure there opens or updates the same issue, but only a
+# pass at the production address closes it.
+#
+# GitHub only runs a schedule from the default branch, may drop or delay a
+# scheduled run, and switches the schedule off after 60 days without repo
+# activity (spec #63's plan limits).
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Address to check instead of production, as https://host with no path
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: health-check
+
+jobs:
+  health:
+    name: Check production's health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The production address. Changing it is a one-way door
+      # (docs/agents/what-stays-human.md). The input reaches the shell only
+      # through the environment, never spliced into a script.
+      PRODUCTION_URL: https://potluck-zeta.vercel.app
+      HEALTH_URL: ${{ inputs.url || 'https://potluck-zeta.vercel.app' }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+      # The open issue is found by this exact title, among those this
+      # workflow opened.
+      ISSUE_TITLE: Production health check failing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Health check
+        id: check
+        run: node scripts/health-check-production.mjs
+
+      - name: Open, update or close the issue
+        # Whenever the check ran, so a crash files an issue too.
+        if: always() && steps.check.outcome != 'skipped'
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+          SUMMARY: ${{ steps.check.outputs.summary }}
+        run: |
+          # The fallback stays outside ${…} (#81).
+          summary="$SUMMARY"
+          if [[ -z "$summary" ]]; then
+            summary="The health check did not finish: see the run"
+          fi
+          # Matched here, not with --author: gh's author filter doesn't
+          # reliably match the Actions bot, which gh names app/github-actions.
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --limit 500 --json number,title,author \
+            --jq '.[] | select(.title == env.ISSUE_TITLE and .author.login == "app/github-actions") | .number' \
+            | head -n 1)
+
+          if [[ "$OUTCOME" == success ]]; then
+            # A pass elsewhere says nothing about production.
+            if [[ -n "$number" && "${HEALTH_URL%/}" == "$PRODUCTION_URL" ]]; then
+              gh issue close "$number" --repo "$GITHUB_REPOSITORY" \
+                --comment "Passing again at $HEALTH_URL: $summary ([run]($RUN_URL))"
+            fi
+            exit 0
+          fi
+
+          if [[ -n "$number" ]]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" \
+              --body "Still failing at $HEALTH_URL: $summary ([run]($RUN_URL))"
+          else
+            body=$(printf '%s\n\n%s\n\n%s\n' \
+              "The hourly health check failed at $HEALTH_URL/api/health:" \
+              "> $summary" \
+              "[See the run]($RUN_URL). This issue gets a comment on each failing check and closes when a check passes.")
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" \
+              --assignee "$GITHUB_REPOSITORY_OWNER" --body "$body"
+          fi
