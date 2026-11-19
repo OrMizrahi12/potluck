@@ -1,0 +1,114 @@
+name: Nightly backup
+
+# Every night, copy production's database (Neon's root branch) with pg_dump,
+# encrypt the copy to the age recipient ADR 0004 records, and keep that
+# backup as an artifact for 14 days (#11). The private key that opens it stays offline with the
+# operator; the restore steps are in docs/production.md.
+#
+# The job checks in to Sentry's cron monitor `potluck-nightly-backup` at the
+# start and the end, so a failed run, and a run that never happens, alerts.
+#
+# It runs in the `production` environment, which only `main` can use and
+# which holds BACKUP_DATABASE_URL and SENTRY_DSN. GitHub only runs a schedule
+# from the default branch, may drop or delay a scheduled run, and switches the
+# schedule off after 60 days without repo activity (spec #63).
+
+on:
+  schedule:
+    # Keep BACKUP_SCHEDULE below the same: Sentry expects a check-in by it.
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-backup
+
+jobs:
+  backup:
+    name: Back up production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      BACKUP_SCHEDULE: "23 3 * * *"
+      # Who can read the backups. Changing it is a one-way door: change ADR
+      # 0004 in the same PR, or `npm run check` fails.
+      AGE_RECIPIENT: age1xuj79lu0v2u23aagqgw493l4utdsxezf2pt6m3n2f45m7cycu5zsdgsnvx
+      # 30 MB: 14 copies stay under GitHub's 500 MB artifact quota (#63).
+      # Rethink retention before raising it.
+      MAX_BACKUP_BYTES: "30000000"
+      # pg_dump must be at least the server's major version.
+      PG_MAJOR: "18"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Name this run's check-ins
+        run: echo "CHECK_IN_ID=$(cat /proc/sys/kernel/random/uuid)" >> "$GITHUB_ENV"
+
+      - name: Tell Sentry the backup started
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: node scripts/backup-check-in.mjs in_progress
+
+      - name: Install pg_dump and age
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q --no-install-recommends "postgresql-client-$PG_MAJOR"
+          if ! command -v age >/dev/null; then
+            sudo apt-get install -y -q --no-install-recommends age
+          fi
+          "/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump" --version
+          age --version
+
+      - name: Make the encrypted backup
+        id: backup
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BACKUP_DATABASE_URL" ]]; then
+            echo "::error::BACKUP_DATABASE_URL isn't set in the production environment"
+            exit 1
+          fi
+          name="potluck-$(date -u +%Y-%m-%dT%H%MZ)"
+          file="$RUNNER_TEMP/$name.dump.age"
+          # The unencrypted copy never touches the disk: pg_dump streams into age.
+          "/usr/lib/postgresql/$PG_MAJOR/bin/pg_dump" --format=custom \
+            --dbname="$BACKUP_DATABASE_URL" \
+            | age --encrypt --recipient "$AGE_RECIPIENT" --output "$file"
+
+          bytes=$(stat --format=%s "$file")
+          echo "Backup: $bytes bytes"
+          if (( bytes > MAX_BACKUP_BYTES )); then
+            echo "::error::The backup is $bytes bytes, over the $MAX_BACKUP_BYTES-byte limit. Not uploaded. See docs/production.md, Plan limits."
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the backup for 14 days
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.backup.outputs.name }}
+          path: ${{ steps.backup.outputs.file }}
+          retention-days: 14
+          # Ciphertext doesn't compress.
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Tell Sentry how the backup ended
+        if: always()
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          OUTCOME: ${{ job.status == 'success' && 'ok' || 'error' }}
+        run: node scripts/backup-check-in.mjs "$OUTCOME"
