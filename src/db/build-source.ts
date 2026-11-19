@@ -27,14 +27,19 @@ function present(value: string | undefined): string | undefined {
  * production. `readHead` returns the checkout's `git rev-parse HEAD`, or
  * undefined when there's no `.git`; a CLI upload carries none, so metadata
  * passed with `vercel deploy -m` can't pass.
+ *
+ * Returns the line a passing production build prints to its log, so the log
+ * shows the check ran, or undefined when the check doesn't apply.
  */
 export function guardProductionBuild(
   env: Env,
   readHead: () => string | undefined
-): void {
+): string | undefined {
   const environment = present(env.VERCEL_ENV);
-  if (environment === undefined && !env.VERCEL) return;
-  if (environment !== undefined && environment !== "production") return;
+  if (environment === undefined && !env.VERCEL) return undefined;
+  if (environment !== undefined && environment !== "production") {
+    return undefined;
+  }
 
   const owner = present(env.VERCEL_GIT_REPO_OWNER);
   const slug = present(env.VERCEL_GIT_REPO_SLUG);
@@ -54,7 +59,7 @@ export function guardProductionBuild(
     seen.commit !== undefined &&
     seen.head === seen.commit
   ) {
-    return;
+    return `Production build source check passed: GitHub built ${EXPECTED.repo}'s ${EXPECTED.branch} at ${seen.commit}, and the checkout's HEAD matches.`;
   }
 
   // Only Git metadata is named: no connection string or other secret.

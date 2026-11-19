@@ -30,8 +30,8 @@ describe("the production build's source check", () => {
     ).toThrow(/environment: \(unset\)/);
   });
 
-  it("passes a GitHub build of main whose checkout HEAD is the reported commit", () => {
-    expect(() =>
+  it("passes a GitHub build of main whose checkout HEAD is the reported commit, with a line for the build log", () => {
+    expect(
       guardProductionBuild(
         {
           VERCEL_ENV: "production",
@@ -43,7 +43,9 @@ describe("the production build's source check", () => {
         },
         () => "3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39"
       )
-    ).not.toThrow();
+    ).toBe(
+      "Production build source check passed: GitHub built OrMizrahi12/potluck's main at 3f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39, and the checkout's HEAD matches."
+    );
   });
 
   it("refuses a production build of another branch, as a preview released to production is", () => {
@@ -181,13 +183,13 @@ describe("the production build's source check", () => {
     expect(message).not.toContain("hunter2");
   });
 
-  it("leaves preview builds and local runs alone", () => {
-    expect(() =>
+  it("leaves preview builds and local runs alone, with nothing for the log", () => {
+    expect(
       guardProductionBuild(
         { VERCEL: "1", VERCEL_ENV: "preview" },
         () => undefined
       )
-    ).not.toThrow();
-    expect(() => guardProductionBuild({}, () => undefined)).not.toThrow();
+    ).toBeUndefined();
+    expect(guardProductionBuild({}, () => undefined)).toBeUndefined();
   });
 });
