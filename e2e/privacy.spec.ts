@@ -114,3 +114,20 @@ test("the privacy page says what's stored and that the link is the key", async (
   );
   await expect(main).toContainText("30 days, stored in the US");
 });
+
+test("the privacy page says how to delete a group and how long backups keep it", async ({
+  page,
+}, testInfo) => {
+  const errors = watchForErrors(page);
+  await page.goto("/privacy");
+  await expectNoSidewaysScroll(page);
+  await screenshot(page, testInfo, "3-privacy-page-deleting-and-backups");
+  expect(errors, "browser errors").toEqual([]);
+
+  const main = page.getByRole("main");
+  await expect(main).toContainText(
+    "open Group settings and choose Delete this group"
+  );
+  await expect(main).toContainText("encrypted backups for up to 14 days");
+  await expect(main).toContainText("never restored on request");
+});
