@@ -27,6 +27,24 @@ describe("latestActivityDate", () => {
     ).toBe("2026-10-08");
   });
 
+  it("returns the newest settlement date when there are no expenses", () => {
+    expect(
+      latestActivityDate({
+        expenses: [],
+        settlements: [
+          {
+            id: "s1",
+            fromId: "m2",
+            toId: "m1",
+            amount: 1000,
+            date: "2026-11-15",
+            version: 1,
+          },
+        ],
+      })
+    ).toBe("2026-11-15");
+  });
+
   it("returns the settlement date when a settlement is newer than the latest expense", () => {
     expect(
       latestActivityDate({
