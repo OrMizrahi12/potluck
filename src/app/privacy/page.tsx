@@ -66,8 +66,16 @@ export default function PrivacyPage() {
 
       <h2>How long it&apos;s kept</h2>
       <p>
-        A group is kept until someone deletes it. Deleting a group removes it
-        for good: there is no undo.
+        A group is kept until someone deletes it. To delete a group, open Group
+        settings and choose Delete this group. Deleting a group removes it for
+        good: there is no undo.
+      </p>
+      <p>
+        Potluck keeps encrypted backups, so its data can be restored if its
+        database is lost. A deleted group stays in those encrypted backups for
+        up to 14 days, until the last backup holding it expires. A single group
+        is never restored on request: backups bring back the whole database
+        after a disaster, not one group someone deleted.
       </p>
     </main>
   );
