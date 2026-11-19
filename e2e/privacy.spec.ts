@@ -117,8 +117,12 @@ test("the privacy page says what's stored and that the link is the key", async (
 
 test("the privacy page says how to delete a group and how long backups keep it", async ({
   page,
-}) => {
+}, testInfo) => {
+  const errors = watchForErrors(page);
   await page.goto("/privacy");
+  await expectNoSidewaysScroll(page);
+  await screenshot(page, testInfo, "3-privacy-page-deleting-and-backups");
+  expect(errors, "browser errors").toEqual([]);
 
   const main = page.getByRole("main");
   await expect(main).toContainText(
