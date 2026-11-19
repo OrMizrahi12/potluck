@@ -1,0 +1,86 @@
+name: Smoke test
+
+# After each production deploy succeeds, wait until the production address
+# reports that commit in /api/health, run the read-only smoke test there, and
+# report a "Smoke test" status on the commit (#69). It runs on what's already
+# released: a failure holds nothing back, and a person rolls back
+# (`vercel rollback`).
+#
+# Needs, outside the repo: repository dispatch events switched on in the Vercel
+# project's Git settings, and the PRODUCTION_URL secret. GitHub only runs a
+# repository_dispatch workflow from the default branch, so this starts working
+# once it's on main.
+
+on:
+  repository_dispatch:
+    types: [vercel.deployment.success]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full SHA of the commit production should be serving
+        required: true
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: smoke-${{ github.event.client_payload.git.sha || inputs.commit }}
+
+jobs:
+  smoke:
+    name: Smoke test production
+    if: github.event_name == 'workflow_dispatch' || github.event.client_payload.environment == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Payload values reach the shell only through the environment, never
+      # spliced into a script.
+      COMMIT: ${{ github.event.client_payload.git.sha || inputs.commit }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the commit
+        run: |
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Not a full commit SHA: '$COMMIT'"
+            exit 1
+          fi
+
+      - name: Mark the commit pending
+        id: pending
+        run: >
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$COMMIT"
+          -f state=pending -f context="Smoke test"
+          -f description="Waiting for production to report this commit"
+          -f target_url="$RUN_URL" --silent
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.COMMIT }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Smoke test
+        id: smoke
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+          SMOKE_COMMIT: ${{ env.COMMIT }}
+        run: node scripts/smoke-production.mjs
+
+      - name: Report the result on the commit
+        # Whenever the commit was marked pending, so it never stays pending.
+        if: always() && steps.pending.outcome == 'success'
+        env:
+          OUTCOME: ${{ steps.smoke.outcome }}
+          SUMMARY: ${{ steps.smoke.outputs.summary }}
+        run: |
+          if [[ "$OUTCOME" == success ]]; then state=success; else state=failure; fi
+          description="${SUMMARY:-Smoke test didn't finish: see the run}"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$COMMIT" \
+            -f state="$state" -f context="Smoke test" \
+            -f description="$description" \
+            -f target_url="$RUN_URL" --silent
