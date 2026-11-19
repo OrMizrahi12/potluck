@@ -13,7 +13,7 @@ npm run db:seed              # applies migrations, then loads the fake data
 npm run dev
 ```
 
-`GET /api/health` answers without touching the database.
+`GET /api/live` answers without touching the database (Sentry's uptime monitor calls it). `GET /api/health` reports the commit the deploy was built from and whether the database answers, has every migration applied, and how many bytes it holds against Neon Free's 1 GB. It answers 503 when the database doesn't answer or a migration is missing.
 
 In a git worktree, run `npm run setup:worktree` instead: it installs, gives the worktree its own database (`potluck_<worktree name>`, migrated and seeded) and dev server port (3100 up), and keeps both in its `.env.local`. Claude Code copies `.env.local` in from the main checkout (`.worktreeinclude`).
 
