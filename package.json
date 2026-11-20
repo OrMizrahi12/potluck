@@ -21,17 +21,17 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/nextjs": "^11.11.0",
+    "@sentry/nextjs": "^11.13.0",
     "drizzle-orm": "^0.45.4",
     "next": "16.4.6",
     "pg": "^8.23.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
@@ -40,7 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "husky": "^9.1.7",
-    "lint-staged": "^17.6.0",
+    "lint-staged": "^17.6.1",
     "prettier": "^3.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5",
