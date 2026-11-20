@@ -1,16 +1,33 @@
 name: Check
 
-on: push
+# Runs on every push, and again when a PR opens or its body is edited: the
+# migration check (#64) reads the body's "Stops using: #N" line, which a
+# push run before the PR opens can't see. The newest run on the head commit is
+# the one the required check reads.
+on:
+  push:
+  pull_request:
+    types: [opened, reopened, edited]
 
 permissions:
   contents: read
+  # The migration check reads the PR's body, the stop-using PR and the
+  # Production deployments Vercel records on GitHub.
+  pull-requests: read
+  deployments: read
 
 jobs:
   check:
     name: Type-check, lint and service tests
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The migration check compares with origin/main's history.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
