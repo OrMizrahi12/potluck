@@ -4,9 +4,9 @@ A web app where a group tracks shared expenses: who paid for what, and what each
 
 ## Live
 
-Potluck is live at **<https://potluck-zeta.vercel.app>**. What it keeps about you, and for how long, is on its [privacy page](https://potluck-zeta.vercel.app/privacy).
+Potluck is live at **<https://potluck-zeta.vercel.app>**. What it keeps, and for how long, is on its [privacy page](https://potluck-zeta.vercel.app/privacy).
 
-It runs non-commercially on Vercel's free Hobby plan: no ads, no paid features, no payments (`docs/adr/0001-host-on-vercel-hobby.md`).
+It runs non-commercially on Vercel's free Hobby plan: no ads, no paid features, no payments ([ADR 0001](docs/adr/0001-host-on-vercel-hobby.md)).
 
 ## Local development
 
