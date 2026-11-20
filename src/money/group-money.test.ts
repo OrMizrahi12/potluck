@@ -223,3 +223,65 @@ describe("suggested settlements", () => {
     ]);
   });
 });
+
+describe("group spending", () => {
+  it("is zero when the group has no expenses", () => {
+    const { groupSpending } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }],
+      expenses: [],
+      settlements: [],
+    });
+
+    expect(groupSpending).toBe(0);
+  });
+
+  // 100 + 101 + 9000 = 9201.
+  it("is the exact sum of every expense's amount in minor units", () => {
+    const { groupSpending } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }, { id: "cy" }],
+      expenses: [
+        {
+          id: "a",
+          amount: 100,
+          payerId: "ana",
+          participantIds: ["ana", "ben", "cy"],
+        },
+        {
+          id: "abc",
+          amount: 101,
+          payerId: "ben",
+          participantIds: ["ana", "ben", "cy"],
+        },
+        {
+          id: "dinner",
+          amount: 9000,
+          payerId: "cy",
+          participantIds: ["ana", "cy"],
+        },
+      ],
+      settlements: [],
+    });
+
+    expect(groupSpending).toBe(9201);
+  });
+
+  it("doesn't count settlements", () => {
+    const { groupSpending } = computeGroupMoney({
+      members: [{ id: "ana" }, { id: "ben" }],
+      expenses: [
+        {
+          id: "dinner",
+          amount: 3000,
+          payerId: "ana",
+          participantIds: ["ana", "ben"],
+        },
+      ],
+      settlements: [
+        { fromId: "ben", toId: "ana", amount: 1500 },
+        { fromId: "ana", toId: "ben", amount: 200 },
+      ],
+    });
+
+    expect(groupSpending).toBe(3000);
+  });
+});

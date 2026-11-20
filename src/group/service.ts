@@ -87,6 +87,11 @@ export type GroupView = {
    * read and never stored. Empty when everyone is settled up.
    */
   suggestedSettlements: SuggestedSettlement[];
+  /**
+   * Minor units: the sum of every one of the group's expenses, not only those
+   * in `expenses`, each at its group-currency amount.
+   */
+  groupSpending: number;
 };
 
 export type SettlementView = {
@@ -1155,6 +1160,7 @@ export async function readGroupView(
       ...foreignPartView(foreignPart),
     })),
     suggestedSettlements: money.suggestedSettlements,
+    groupSpending: money.groupSpending,
   };
 }
 

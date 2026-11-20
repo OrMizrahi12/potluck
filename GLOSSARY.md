@@ -30,6 +30,10 @@ _Avoid_: Removed, former, archived member
 Money one member paid on the group's behalf, split among chosen participants.
 _Avoid_: Bill, purchase, cost, transaction
 
+**Group spending**:
+The sum of a group's expenses, in the group currency.
+_Avoid_: Total, group total, spent
+
 **Payer**:
 The member who paid for an expense.
 _Avoid_: Spender, buyer, creditor

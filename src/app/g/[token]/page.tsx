@@ -73,6 +73,8 @@ async function Group({ token, shown }: { token: string; shown: number }) {
         </Link>
       </div>
 
+      <p>Group spending: {money(group.groupSpending)}</p>
+
       <h2 id="balances">Balances</h2>
       <ul className="balances" aria-labelledby="balances">
         {group.members.map((member) => (
