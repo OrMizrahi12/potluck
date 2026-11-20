@@ -1,19 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkMigrations } from "./check-migrations.mjs";
 
-/** A GitHub that should never be asked: the case at hand has no drop. */
-const unaskedGithub = {
-  pullRequest: () => {
-    throw new Error("asked for a PR");
-  },
-  productionRelease: () => {
-    throw new Error("asked for production's release");
-  },
-  includes: () => {
-    throw new Error("asked whether a release includes a commit");
-  },
-};
-const noMentions = async () => [];
+// Each test that has no drop gives a GitHub that throws when asked: only a
+// drop may look up PRs and releases.
 
 describe("migration check", () => {
   it("passes a migration that only adds", async () => {
@@ -36,22 +25,79 @@ describe("migration check", () => {
         },
       ],
       prBody: async () => "",
-      github: unaskedGithub,
-      codeMentions: noMentions,
+      github: {
+        pullRequest: () => {
+          throw new Error("asked for a PR");
+        },
+        productionRelease: () => {
+          throw new Error("asked for production's release");
+        },
+        includes: () => {
+          throw new Error("asked whether a release includes a commit");
+        },
+      },
+      codeMentions: async () => [],
     });
 
     expect(result.passed).toBe(true);
   });
 
   it.each([
+    [
+      "a column whose name is a keyword",
+      'ALTER TABLE "expenses" ADD COLUMN "check" text;',
+    ],
+    [
+      "a serial column, NOT NULL",
+      'ALTER TABLE "expenses" ADD COLUMN "position" serial NOT NULL;',
+    ],
+    [
+      "an identity column, NOT NULL",
+      'ALTER TABLE "expenses" ADD COLUMN "position" integer GENERATED ALWAYS AS IDENTITY NOT NULL;',
+    ],
+  ])("passes adding %s", async (_, sql) => {
+    const result = await checkMigrations({
+      migrations: [{ path: "drizzle/0008_add.sql", change: "added", sql }],
+      prBody: async () => "",
+      github: {
+        pullRequest: () => {
+          throw new Error("asked for a PR");
+        },
+        productionRelease: () => {
+          throw new Error("asked for production's release");
+        },
+        includes: () => {
+          throw new Error("asked whether a release includes a commit");
+        },
+      },
+      codeMentions: async () => [],
+    });
+
+    expect(result).toEqual({ passed: true, summary: expect.any(String) });
+  });
+
+  it.each([
     ['DROP TABLE "receipts";'],
     ['ALTER TABLE "expenses" DROP COLUMN "receipt_note";'],
+    ['ALTER TABLE "expenses" DROP CONSTRAINT "expenses_positive";'],
+    ['DROP INDEX "expenses_date_index";'],
+    ['ALTER TABLE "expenses" ALTER COLUMN "description" DROP NOT NULL;'],
   ])("fails %s when the PR names no stop-using PR", async (sql) => {
     const result = await checkMigrations({
       migrations: [{ path: "drizzle/0008_drop.sql", change: "added", sql }],
       prBody: async () => "Drops what nothing reads any more.",
-      github: unaskedGithub,
-      codeMentions: noMentions,
+      github: {
+        pullRequest: () => {
+          throw new Error("asked for a PR");
+        },
+        productionRelease: () => {
+          throw new Error("asked for production's release");
+        },
+        includes: () => {
+          throw new Error("asked whether a release includes a commit");
+        },
+      },
+      codeMentions: async () => [],
     });
 
     expect(result.passed).toBe(false);
@@ -81,7 +127,7 @@ describe("migration check", () => {
         }),
         includes: async () => false,
       },
-      codeMentions: noMentions,
+      codeMentions: async () => [],
     });
 
     expect(result.passed).toBe(false);
@@ -108,7 +154,7 @@ describe("migration check", () => {
         }),
         includes: async () => false,
       },
-      codeMentions: noMentions,
+      codeMentions: async () => [],
     });
 
     expect(result.passed).toBe(false);
@@ -118,6 +164,17 @@ describe("migration check", () => {
   it.each([
     ['DROP TABLE "receipts";'],
     ['ALTER TABLE "expenses" DROP COLUMN "receipt_note";'],
+    [
+      // What drizzle-kit writes for a column with a foreign key and an index.
+      [
+        'ALTER TABLE "expenses" DROP CONSTRAINT "expenses_receipt_id_receipts_id_fk";',
+        "--> statement-breakpoint",
+        'DROP INDEX "expenses_receipt_index";',
+        "--> statement-breakpoint",
+        'ALTER TABLE "expenses" DROP COLUMN "receipt_id";',
+      ].join("\n"),
+    ],
+    ['ALTER TABLE "expenses" ALTER COLUMN "description" DROP NOT NULL;'],
   ])("passes %s once its stop-using PR is released", async (sql) => {
     const result = await checkMigrations({
       migrations: [{ path: "drizzle/0008_drop.sql", change: "added", sql }],
@@ -134,7 +191,7 @@ describe("migration check", () => {
           release === "new0new0new0new0new0new0new0new0new0new0" &&
           commit === "c74c74c74c74c74c74c74c74c74c74c74c74c74c",
       },
-      codeMentions: noMentions,
+      codeMentions: async () => [],
     });
 
     expect(result.passed).toBe(true);
@@ -157,8 +214,8 @@ describe("migration check", () => {
         }),
         includes: async () => true,
       },
-      codeMentions: async (word: string) =>
-        word === name ? ["src/db/schema.ts"] : [],
+      codeMentions: async (searched: string) =>
+        searched === name ? ["src/db/schema.ts"] : [],
     });
 
     expect(result.passed).toBe(false);
@@ -182,6 +239,10 @@ describe("migration check", () => {
     [
       "adds a column that is NOT NULL without a default",
       'ALTER TABLE "expenses" ADD COLUMN "category" text NOT NULL;',
+    ],
+    [
+      "adds a column named default that is NOT NULL",
+      'ALTER TABLE "expenses" ADD COLUMN "default" text NOT NULL;',
     ],
     [
       "makes an existing column NOT NULL",
@@ -223,9 +284,10 @@ describe("migration check", () => {
       "drops and adds in the same PR",
       'DROP TABLE "receipts";\nCREATE TABLE "notes" ("id" text PRIMARY KEY);',
     ],
+    ["drops a table with CASCADE", 'DROP TABLE "receipts" CASCADE;'],
     [
-      "drops a constraint",
-      'ALTER TABLE "expenses" DROP CONSTRAINT "expenses_positive";',
+      "drops a default",
+      'ALTER TABLE "expenses" ALTER COLUMN "date" DROP DEFAULT;',
     ],
     [
       "runs something the check can't read",
@@ -247,7 +309,7 @@ describe("migration check", () => {
           }),
           includes: async () => true,
         },
-        codeMentions: noMentions,
+        codeMentions: async () => [],
       });
 
       expect(result.passed).toBe(false);
@@ -267,8 +329,18 @@ describe("migration check", () => {
           },
         ],
         prBody: async () => "",
-        github: unaskedGithub,
-        codeMentions: noMentions,
+        github: {
+          pullRequest: () => {
+            throw new Error("asked for a PR");
+          },
+          productionRelease: () => {
+            throw new Error("asked for production's release");
+          },
+          includes: () => {
+            throw new Error("asked whether a release includes a commit");
+          },
+        },
+        codeMentions: async () => [],
       });
 
       expect(result.passed).toBe(false);

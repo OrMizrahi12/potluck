@@ -4,7 +4,8 @@
 // constraints on an existing table, and no edits to a migration main already
 // has. A drop passes only on its own, once the PR that stopped using what it
 // drops is in the release production serves (the PR body says
-// "Stops using: #N") and no code still names it. `npm run check` runs it
+// "Stops using: #N") and no code still names it; so does a loosening (a
+// dropped constraint, index or NOT NULL). `npm run check` runs it
 // against origin/main (MIGRATION_BASE overrides).
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -27,8 +28,8 @@ const STOPS_USING = /^\s*Stops using:\s*#(\d+)\s*$/im;
  *   The commit of the release production serves now.
  * @param {(release: string, commit: string) => Promise<boolean>} input.github.includes
  *   Whether the release's commit includes the other commit.
- * @param {(word: string) => Promise<string[]>} input.codeMentions
- *   The code files that name a word.
+ * @param {(name: string) => Promise<string[]>} input.codeMentions
+ *   The code files that name a dropped table or column.
  * @returns {Promise<{ passed: boolean, summary: string }>}
  */
 export async function checkMigrations({
@@ -86,11 +87,11 @@ export async function checkMigrations({
       `#${pr} isn't released yet: production serves ${release.commit}, which doesn't include #${pr}'s merge commit ${stopUsing.mergeCommit}`
     );
 
-  for (const { word } of drops) {
-    const files = await codeMentions(word);
+  for (const { name } of drops.filter((d) => d.name)) {
+    const files = await codeMentions(name);
     if (files.length > 0)
       return fail(
-        `The code still names ${word}, which this PR drops: ${files.join(", ")}`
+        `The code still names ${name}, which this PR drops: ${files.join(", ")}`
       );
   }
   return {
@@ -99,19 +100,31 @@ export async function checkMigrations({
   };
 }
 
+/** A statement or table action that only adds. */
+const adds = { kind: "adds" };
+/** A statement or table action refused outright, saying why. */
+const refuse = (reason) => ({ kind: "refused", reason });
 /**
- * Whether one statement only adds, drops a table or column (`word` names
- * it), or is refused (`reason` says why). Tables in `created` are new in
- * this PR, so no release reads them and constraints on them are free.
+ * A statement or table action that removes something. `name` is the table
+ * or column it drops, which no code may still name; a loosening (a
+ * constraint, an index, a NOT NULL) has none.
+ */
+const drop = (name) => ({ kind: "drop", name });
+
+/**
+ * Whether one statement only adds, drops, or is refused. Tables in
+ * `created` are new in this PR, so no release reads them and constraints on
+ * them are free.
  */
 function judge(text, created) {
-  const adds = { kind: "adds" };
-  const refuse = (reason) => ({ kind: "refused", reason });
-
   if (/\bRENAME\b/i.test(text)) return refuse("renames");
+  if (/^DROP\b.*\bCASCADE$/i.test(text))
+    return refuse("drops with CASCADE, which drops whatever depends on it too");
 
   const dropTable = text.match(/^DROP TABLE (?:IF EXISTS )?(\S+)$/i);
-  if (dropTable) return { kind: "drop", word: bare(dropTable[1]) };
+  if (dropTable) return drop(bare(dropTable[1]));
+  if (/^DROP INDEX (?:CONCURRENTLY )?(?:IF EXISTS )?\S+$/i.test(text))
+    return drop();
 
   if (/^CREATE (?:TABLE|TYPE|SEQUENCE|SCHEMA)\b/i.test(text)) return adds;
   if (/^CREATE INDEX\b/i.test(text)) return adds;
@@ -130,28 +143,22 @@ function judge(text, created) {
   if (!alter) return refuse("runs something the check can't read as adding");
   const isNew = created.has(bare(alter[1]));
 
-  const judgedActions = splitTopLevel(alter[2]).map((action) =>
+  const actions = splitTopLevel(alter[2]).map((action) =>
     judgeTableAction(action, isNew)
   );
-  return (
-    judgedActions.find((a) => a.kind === "refused") ??
-    (judgedActions.every((a) => a.kind === "drop") && judgedActions.length === 1
-      ? judgedActions[0]
-      : judgedActions.find((a) => a.kind === "drop")
-        ? refuse("drops alongside other changes in one statement")
-        : adds)
-  );
+  const refused = actions.find((a) => a.kind === "refused");
+  if (refused) return refused;
+  if (actions.length === 1) return actions[0];
+  if (actions.some((a) => a.kind === "drop"))
+    return refuse("drops alongside other changes in one statement");
+  return adds;
 }
 
 /** One action of an ALTER TABLE, judged like a statement. */
 function judgeTableAction(action, isNew) {
-  const adds = { kind: "adds" };
-  const refuse = (reason) => ({ kind: "refused", reason });
-
-  if (/^DROP (?:CONSTRAINT)\b/i.test(action))
-    return refuse("drops a constraint");
-  const column = action.match(/^DROP (?:COLUMN )?(?:IF EXISTS )?(\S+)/i);
-  if (column) return { kind: "drop", word: bare(column[1]) };
+  if (/^DROP CONSTRAINT (?:IF EXISTS )?\S+$/i.test(action)) return drop();
+  const column = action.match(/^DROP (?:COLUMN )?(?:IF EXISTS )?(\S+)$/i);
+  if (column) return drop(bare(column[1]));
 
   const addColumn = action.match(/^ADD (?:COLUMN )?(?:IF NOT EXISTS )?(.+)$/i);
   if (
@@ -161,10 +168,16 @@ function judgeTableAction(action, isNew) {
     )
   ) {
     if (isNew) return adds;
-    const definition = addColumn[1];
+    // Quoted names and literals blanked, so a column called "default" or
+    // "check" reads as a name, not a keyword.
+    const definition = addColumn[1].replace(
+      /"(?:[^"]|"")*"|'(?:[^']|'')*'/g,
+      "_"
+    );
     if (/\b(?:REFERENCES|CHECK|UNIQUE|PRIMARY KEY)\b/i.test(definition))
       return refuse("adds a column with a constraint to an existing table");
-    if (/\bNOT NULL\b/i.test(definition) && !/\bDEFAULT\b/i.test(definition))
+    const filled = /\b(?:DEFAULT|GENERATED|SERIAL|SMALLSERIAL|BIGSERIAL)\b/i;
+    if (/\bNOT NULL\b/i.test(definition) && !filled.test(definition))
       return refuse(
         "adds a NOT NULL column without a default to an existing table"
       );
@@ -175,12 +188,16 @@ function judgeTableAction(action, isNew) {
 
   const alterColumn = action.match(/^ALTER (?:COLUMN )?\S+ (.+)$/i);
   if (alterColumn) {
-    if (/^SET DEFAULT\b/i.test(alterColumn[1])) return adds;
+    const change = alterColumn[1];
+    if (/^SET DEFAULT\b/i.test(change)) return adds;
+    if (/^DROP NOT NULL$/i.test(change)) return drop();
     if (isNew) return adds;
-    if (/^SET NOT NULL$/i.test(alterColumn[1]))
+    if (/^SET NOT NULL$/i.test(change))
       return refuse("makes an existing column NOT NULL");
-    if (/^(?:SET DATA )?TYPE\b/i.test(alterColumn[1]))
+    if (/^(?:SET DATA )?TYPE\b/i.test(change))
       return refuse("changes a column's type");
+    if (/^DROP DEFAULT$/i.test(change))
+      return refuse("drops a default the previous release may rely on");
   }
   return refuse("changes a table in a way the check can't read as adding");
 }

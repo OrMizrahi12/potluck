@@ -9,7 +9,7 @@ One change, one worktree, one PR. Each ticket or fix gets its own worktree and b
 1. **Open the PR.** Write the body with `/pr`. When the change has a ticket, the body includes `Closes #N` so the merge closes it.
 2. **Queue auto-merge**, right after opening: `gh pr merge --auto --merge`. GitHub merges once the required check is green. Done when `gh pr view --json autoMergeRequest` is non-null.
    - **Migration PRs are the exception.** A PR that adds a file under `drizzle/` is left for a human to merge: skip auto-merge and say in the PR that it carries a migration. Check with `gh pr diff --name-only | grep '^drizzle/'`.
-   - **A migration that drops a table or column** passes the required check only on its own, with `Stops using: #N` in the body naming the PR that stopped using it, once production serves a release that includes #N. Editing the body reruns the check; after #N is released, rerun it by hand.
+   - **A migration that drops a table or column**, or loosens a constraint, passes the required check only on its own, with `Stops using: #N` in the body naming the PR that stopped using it, once production serves a release that includes #N. Editing the body reruns the check; after #N is released, rerun it by hand.
 3. **Keep the branch current.** When the PR is behind `main`, run `gh pr update-branch`; the check reruns and auto-merge proceeds.
 4. **Confirm the deploy.** After the merge, read the production deploy of the merge commit. Vercel posts it as a commit status:
 

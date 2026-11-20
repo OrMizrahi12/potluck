@@ -1,13 +1,13 @@
 name: Check
 
-# Runs on every push, and again when a PR's body is edited: the migration
-# check (#64) reads the body's "Stops using: #N" line, and editing the body
-# doesn't push. The newest run on the head commit is the one the required
-# check reads.
+# Runs on every push, and again when a PR opens or its body is edited: the
+# migration check (#64) reads the body's "Stops using: #N" line, which a
+# push run before the PR opens can't see. The newest run on the head commit is
+# the one the required check reads.
 on:
   push:
   pull_request:
-    types: [edited]
+    types: [opened, reopened, edited]
 
 permissions:
   contents: read
