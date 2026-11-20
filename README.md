@@ -44,6 +44,6 @@ scripts/setup-hosting.sh
 | ----------- | ------------------------------------------------------------------- |
 | Local       | Your own Postgres 18, loaded by `npm run db:seed`                   |
 | Preview     | Its own Neon branch, copied from `development` and deleted on merge |
-| Production  | Neon's root branch, `production`; never seeded                      |
+| Production  | Neon's root branch, `production`; `db:seed` refuses it              |
 
 `development` holds only seed data and is Neon's default branch, so previews copy from it (see `docs/adr/0003-per-pr-database-copies.md`). Every Vercel build runs the migrations first (`vercel.json`), on the direct connection because the advisory lock needs a session; a failing migration fails the build.
