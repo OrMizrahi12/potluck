@@ -12,7 +12,9 @@ import {
 } from "@/group/service";
 import { formatRate } from "@/money/foreign-amount";
 import { formatAmount, formatDate } from "@/money/format";
+import { formatGroupSummary } from "@/money/summary";
 import { visitorLocale } from "../../locale";
+import { CopySummary } from "./copy-summary";
 import { GroupLink } from "./group-link";
 import { latestActivityDate } from "./latest-activity";
 import { WhoAreYou } from "./who-are-you";
@@ -42,6 +44,19 @@ async function Group({ token, shown }: { token: string; shown: number }) {
   const money = (minor: number) => formatAmount(minor, group, locale);
   const nameOf = new Map(group.members.map((m) => [m.id, m.name]));
   const latestActivity = latestActivityDate(group);
+  // Built here so the copied amounts match the page's, with no extra request.
+  const summary = formatGroupSummary({
+    groupName: group.name,
+    currency: { currency: group.currency, digits: group.digits },
+    locale,
+    groupSpending: group.groupSpending,
+    members: group.members.map(({ name, balance }) => ({ name, balance })),
+    suggestedSettlements: group.suggestedSettlements.map((s) => ({
+      fromName: nameOf.get(s.fromId) ?? "",
+      toName: nameOf.get(s.toId) ?? "",
+      amount: s.amount,
+    })),
+  });
 
   return (
     <>
@@ -110,6 +125,8 @@ async function Group({ token, shown }: { token: string; shown: number }) {
           ))}
         </ul>
       )}
+      {/* Expense amounts are always positive, so spending above zero means at least one expense. */}
+      {group.groupSpending > 0 && <CopySummary summary={summary} />}
 
       <h2 id="expenses">Expenses</h2>
       {group.expenses.length === 0 ? (
