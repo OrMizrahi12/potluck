@@ -264,7 +264,7 @@ while :; do
 done
 _host="${DEVELOPMENT_URL#*@}"; _host="${_host%%/*}"
 say "Seeding $_host"
-if DATABASE_URL="$DEVELOPMENT_URL" npm run --silent db:seed; then
+if DATABASE_URL="$DEVELOPMENT_URL" POTLUCK_ALLOW_REMOTE_SEED=1 npm run --silent db:seed; then
   printf '  %s✓ development migrated and seeded%s\n' "$GREEN" "$RESET"
 else
   warn "Seeding failed; the error is above. Fix it, then re-run this wizard."

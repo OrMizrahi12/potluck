@@ -2,6 +2,12 @@
 
 A web app where a group tracks shared expenses: who paid for what, and what each member must pay or receive to come out even.
 
+## Live
+
+Potluck is live at **<https://potluck-zeta.vercel.app>**. What it keeps, and for how long, is on its [privacy page](https://potluck-zeta.vercel.app/privacy).
+
+It runs non-commercially on Vercel's free Hobby plan: no ads, no paid features, no payments ([ADR 0001](docs/adr/0001-host-on-vercel-hobby.md)).
+
 ## Local development
 
 Needs Node 24 (`nvm use`), npm, and your own Postgres 18.
@@ -15,7 +21,7 @@ npm run dev
 
 `GET /api/live` answers without touching the database (Sentry's uptime monitor calls it). `GET /api/health` reports the commit the deploy was built from and whether the database answers, has every migration applied, and how many bytes it holds against Neon Free's 1 GB. It answers 503 when the database doesn't answer or a migration is missing.
 
-Every hour, `.github/workflows/health.yml` calls production's `/api/health`. A failure, a schema that isn't current, or storage at 80% of the limit opens an issue (or comments on the open one) assigned to the repo's owner; a passing check closes it. To force a failure, run the workflow by hand with a bad `url`: `gh workflow run health.yml -f url=https://potluck-no-such-deploy.vercel.app`.
+Every hour, `.github/workflows/health.yml` calls production's `/api/health`. A failure, a schema that isn't current, or storage at 80% of the limit opens an issue (or comments on the open one) assigned to the repo's owner. Only a passing check against the production address closes it. To force a failure, run the workflow by hand with a bad `url`: `gh workflow run health.yml -f url=https://potluck-no-such-deploy.vercel.app`.
 
 In a git worktree, run `npm run setup:worktree` instead: it installs, gives the worktree its own database (`potluck_<worktree name>`, migrated and seeded) and dev server port (3100 up), and keeps both in its `.env.local`. Claude Code copies `.env.local` in from the main checkout (`.worktreeinclude`).
 
@@ -44,6 +50,6 @@ scripts/setup-hosting.sh
 | ----------- | ------------------------------------------------------------------- |
 | Local       | Your own Postgres 18, loaded by `npm run db:seed`                   |
 | Preview     | Its own Neon branch, copied from `development` and deleted on merge |
-| Production  | Neon's root branch, `production`; never seeded                      |
+| Production  | Neon's root branch, `production`; `db:seed` refuses it              |
 
 `development` holds only seed data and is Neon's default branch, so previews copy from it (see `docs/adr/0003-per-pr-database-copies.md`). Every Vercel build runs the migrations first (`vercel.json`), on the direct connection because the advisory lock needs a session; a failing migration fails the build.

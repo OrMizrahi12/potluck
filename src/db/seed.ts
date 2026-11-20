@@ -13,7 +13,7 @@ import type { Db } from "./types";
 
 /**
  * The links the seeded groups open at, the same on every run. They are public,
- * which is safe only because production is never seeded.
+ * which is safe only because production is never seeded (`seed-guard.ts`).
  */
 export const SEED_LINKS = {
   flatShare: "seed-flat-share-eur-01",
