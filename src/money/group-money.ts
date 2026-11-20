@@ -23,6 +23,8 @@ export type GroupMoney = {
   shares: Map<string, Share[]>;
   balances: Balance[];
   suggestedSettlements: SuggestedSettlement[];
+  /** The sum of every expense's amount, in minor units; settlements don't count. */
+  groupSpending: number;
 };
 
 /**
@@ -68,7 +70,14 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     balance: balanceById.get(m.id) ?? 0,
   }));
 
-  return { shares, balances, suggestedSettlements: suggest(balances) };
+  const groupSpending = input.expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  return {
+    shares,
+    balances,
+    suggestedSettlements: suggest(balances),
+    groupSpending,
+  };
 }
 
 // Greedy matching: repeatedly have the member who owes most pay the member who
