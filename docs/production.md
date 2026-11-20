@@ -28,6 +28,16 @@ Nothing responds to a limit automatically. Each row is a person's job.
 | GitHub Actions | 500 MB artifacts; schedules may be dropped, and stop after 60 days quiet | Backups and health checks stop quietly. The Sentry cron monitor alerts on a missed backup; nothing alerts on a stopped health check. | Read the failed run. The backup job fails on purpose over 30 MB, to keep 14 copies under 500 MB: rethink retention before raising it. A stopped schedule: re-enable the workflow in the Actions tab. Now and then, check the health check's last run is under an hour old.                                            |
 | Sentry free    | 5k errors a month, 1 uptime and 1 cron monitor                           | Errors past 5k are dropped                                                                                                           | Nothing: accepted. If it's hit, the errors already seen say what's wrong.                                                                                                                                                                                                                                             |
 
+## Dependency updates
+
+Dependabot opens one PR a week with every minor and patch update (`.github/dependabot.yml`). It ignores major versions, which can break the build (#91), so nothing announces them. Check for them on purpose, at least once a month and whenever a security alert's fix is a major:
+
+```sh
+npm outdated
+```
+
+A package whose `Latest` is a major past `Wanted` has a major waiting. Land each major as its own change, in its own worktree and PR, with whatever code it breaks fixed alongside.
+
 ## Rollback
 
 When a release is broken:

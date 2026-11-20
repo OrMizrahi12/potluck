@@ -1,6 +1,9 @@
 # One npm PR a week at most (#89). Each PR's preview takes a Neon branch, and
-# ADR 0003 leaves room for only 8 open PRs with previews, so every update goes
-# in one group. GitHub Actions versions are updated by hand.
+# ADR 0003 leaves room for only 8 open PRs with previews, so the week's updates
+# go in one group. GitHub Actions versions are updated by hand.
+#
+# Majors are left out: one in the group failed the whole PR (#91). They're
+# checked by hand instead (docs/production.md, "Dependency updates").
 #
 # "Dependabot security updates" stays off on purpose, with alerts on: its
 # security PRs open as soon as an alert fires, outside this schedule. The
@@ -16,3 +19,10 @@ updates:
       all-dependencies:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
