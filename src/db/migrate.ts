@@ -4,6 +4,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Client } from "pg";
 import { missingMigrations } from "./migration-journal";
 import { MIGRATIONS_FOLDER } from "./migrations-folder";
+import { onlyRow } from "./only-row";
 import * as schema from "./schema";
 import type { Db } from "./types";
 
@@ -34,7 +35,7 @@ async function readRestorePoint(db: Db): Promise<RestorePoint> {
     sql`select pg_current_wal_lsn()::text as lsn,
       to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as time`
   )) as { rows: RestorePoint[] };
-  return result.rows[0];
+  return onlyRow(result.rows);
 }
 
 function restorePointLines(

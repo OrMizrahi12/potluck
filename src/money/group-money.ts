@@ -49,16 +49,12 @@ export function computeGroupMoney(input: GroupMoneyInput): GroupMoney {
     const base = Math.floor(expense.amount / n);
     const leftover = expense.amount % n;
     const offset = fnv1a32(expense.id) % n;
-    const expenseShares: Share[] = participantIds.map((memberId) => ({
-      memberId,
-      share: base,
-      extra: 0,
-    }));
-    for (let i = 0; i < leftover; i++) {
-      const s = expenseShares[(offset + i) % n];
-      s.share += 1;
-      s.extra = 1;
-    }
+    // The leftover units go to the `leftover` participants starting at
+    // index `offset`, wrapping round to the start.
+    const expenseShares: Share[] = participantIds.map((memberId, index) => {
+      const extra = (index - offset + n) % n < leftover ? 1 : 0;
+      return { memberId, share: base + extra, extra };
+    });
     shares.set(expense.id, expenseShares);
     add(expense.payerId, expense.amount);
     for (const s of expenseShares) add(s.memberId, -s.share);

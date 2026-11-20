@@ -1,0 +1,17 @@
+{
+  // The app's own code, checked more strictly than tests and the seed (#95):
+  // an index into an array or record may be undefined, so `rows[0].date` must
+  // handle the empty case.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/db/seed.ts"]
+}
