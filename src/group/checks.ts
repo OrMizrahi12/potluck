@@ -6,7 +6,7 @@ import { findCurrency, type Currency } from "../currency/currencies";
 export function isCalendarDate(text: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number);
+  const [, year = NaN, month = NaN, day = NaN] = match.map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
     year >= 1 &&

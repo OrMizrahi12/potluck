@@ -110,7 +110,10 @@ export function useClaim(
   if (!saved) return undefined;
   const claimed = saved.claims[token];
   return {
-    claimed: memberIds.includes(claimed) ? claimed : undefined,
+    claimed:
+      claimed !== undefined && memberIds.includes(claimed)
+        ? claimed
+        : undefined,
     skipped: saved.skipped.includes(token),
   };
 }

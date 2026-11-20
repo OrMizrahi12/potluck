@@ -200,7 +200,7 @@ function plainDecimal(text: unknown): string | undefined {
   if (typeof text !== "string") return undefined;
   const match = /^(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text);
   if (!match) return undefined;
-  const [, whole, fraction = "", exponent] = match;
+  const [, whole = "", fraction = "", exponent] = match;
   if (!/[1-9]/.test(whole + fraction)) return undefined;
   if (exponent === undefined) return text;
   const digits = whole + fraction;

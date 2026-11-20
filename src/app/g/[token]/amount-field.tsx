@@ -551,7 +551,7 @@ function positive(minor: number | undefined): number | undefined {
 function plainTypedRate(text: string): string | undefined {
   const match = /^(\d*)(?:[.,](\d*))?$/.exec(text.trim());
   if (!match) return undefined;
-  const [, whole, fraction = ""] = match;
+  const [, whole = "", fraction = ""] = match;
   if (!/[1-9]/.test(whole + fraction)) return undefined;
   const plainWhole = whole.replace(/^0+/, "") || "0";
   return fraction === "" ? plainWhole : `${plainWhole}.${fraction}`;

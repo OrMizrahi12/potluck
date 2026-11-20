@@ -13,7 +13,7 @@
 export function parseAmount(text: string, digits: number): number | undefined {
   const match = /^(-?)(\d*)(?:([.,])(\d*))?$/.exec(text.trim());
   if (!match) return undefined;
-  const [, minus, whole, separator, fraction = ""] = match;
+  const [, minus, whole = "", separator, fraction = ""] = match;
   if (whole === "" && fraction === "") return undefined;
   if (fraction.length > digits) return undefined;
   if (separator === "," && fraction.length === 3) return undefined;

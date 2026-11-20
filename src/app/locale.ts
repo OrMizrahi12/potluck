@@ -9,7 +9,8 @@ import { headers } from "next/headers";
 export async function visitorLocale(): Promise<string> {
   const accepted = (await headers()).get("accept-language") ?? "";
   for (const entry of accepted.split(",")) {
-    const tag = entry.split(";")[0].trim();
+    const [range = ""] = entry.split(";");
+    const tag = range.trim();
     if (tag === "" || tag === "*") continue;
     try {
       const [supported] = Intl.NumberFormat.supportedLocalesOf(tag);

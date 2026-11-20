@@ -8,6 +8,7 @@ import {
   members,
   settlements,
 } from "../db/schema";
+import { onlyRow } from "../db/only-row";
 import type { Db } from "../db/types";
 import { parseAmount } from "../money/amount";
 import {
@@ -151,10 +152,12 @@ export async function createGroup(
 
   try {
     await db.transaction(async (tx) => {
-      const [group] = await tx
-        .insert(groups)
-        .values({ linkToken, name, currency: input.currency })
-        .returning({ id: groups.id });
+      const group = onlyRow(
+        await tx
+          .insert(groups)
+          .values({ linkToken, name, currency: input.currency })
+          .returning({ id: groups.id })
+      );
       await tx.insert(members).values(
         memberNames.map((memberName, position) => ({
           groupId: group.id,
@@ -283,17 +286,21 @@ export async function addExpense(
     const expense = await checkExpense(tx, group, input);
     if (typeof expense === "string") return expense;
 
-    const [{ count }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(expenses)
-      .where(eq(expenses.groupId, group.id));
+    const { count } = onlyRow(
+      await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(expenses)
+        .where(eq(expenses.groupId, group.id))
+    );
     if (count >= LIMITS.expenses) return "too-many-expenses" as const;
 
     const { participantIds, ...fields } = expense;
-    const [added] = await tx
-      .insert(expenses)
-      .values({ groupId: group.id, ...fields })
-      .returning({ id: expenses.id });
+    const added = onlyRow(
+      await tx
+        .insert(expenses)
+        .values({ groupId: group.id, ...fields })
+        .returning({ id: expenses.id })
+    );
     await tx
       .insert(expenseParticipants)
       .values(
@@ -528,7 +535,7 @@ function checkExchangeRate(
   | { refusal: "exchange-rate-unreadable" | "exchange-rate-not-positive" } {
   const match = /^(-?)(\d*)(?:\.(\d*))?$/.exec(text.trim());
   if (!match) return { refusal: "exchange-rate-unreadable" };
-  const [, minus, whole, fraction = ""] = match;
+  const [, minus, whole = "", fraction = ""] = match;
   const digits = whole + fraction;
   if (digits === "" || digits.length > RATE_DIGITS)
     return { refusal: "exchange-rate-unreadable" };
@@ -601,10 +608,12 @@ export async function addSettlement(
     const settlement = await checkSettlement(tx, group, input);
     if (typeof settlement === "string") return settlement;
 
-    const [{ count }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(settlements)
-      .where(eq(settlements.groupId, group.id));
+    const { count } = onlyRow(
+      await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(settlements)
+        .where(eq(settlements.groupId, group.id))
+    );
     if (count >= LIMITS.settlements) return "too-many-settlements" as const;
 
     await tx.insert(settlements).values({ groupId: group.id, ...settlement });

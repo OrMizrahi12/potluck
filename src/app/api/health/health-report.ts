@@ -3,6 +3,7 @@ import {
   unappliedMigrations,
   type JournalEntry,
 } from "../../../db/migration-journal";
+import { onlyRow } from "../../../db/only-row";
 import type { Db } from "../../../db/types";
 
 type Env = Record<string, string | undefined>;
@@ -31,7 +32,7 @@ async function databaseBytes(db: Db): Promise<number> {
   const result = (await db.execute(
     sql`select pg_database_size(current_database())::text as bytes`
   )) as { rows: { bytes: string }[] };
-  return Number(result.rows[0].bytes);
+  return Number(onlyRow(result.rows).bytes);
 }
 
 /**
